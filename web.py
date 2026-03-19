@@ -296,6 +296,9 @@ def start_web(storage_manager):
         logger.warning("SSL not configured — running over plain HTTP")
 
     logger.info(f"Web interface: {protocol}://raspberrypi.local:{WEB_PORT}")
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
     app.run(
         host=WEB_HOST,
         port=WEB_PORT,
