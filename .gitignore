@@ -1,12 +1,30 @@
+
+# Virtual environment
 venv/
+
+# User generated data — never commit
 snapshots/
 recordings/
 logs/
-__pycache__/
-*.pyc
-*.pyo
+
+# Security sensitive — never commit
+ssl/
+auth.txt
+
+# Model binary — too large, downloaded on install
+models/detect.tflite
+
+# Test and dev files
 test_image.jpg
 inspect_model.py
 test_detector.py
-models/detect.tflite
-*.jpg
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS files
+.DS_Store
+Thumbs.db

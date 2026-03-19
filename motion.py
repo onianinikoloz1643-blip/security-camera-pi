@@ -1,8 +1,14 @@
 import cv2
-import numpy as np
+import time
 import logging
+import numpy as np
+from config import MOTION_THRESHOLD, MOTION_MIN_AREA, MOTION_BLUR
 
 logger = logging.getLogger(__name__)
+
+# If no motion for this many seconds, reset the previous frame
+# to avoid a false trigger after a long static period
+IDLE_RESET_SECONDS = 30
 
 
 class MotionDetector:
@@ -11,37 +17,50 @@ class MotionDetector:
     Runs before ML inference to avoid wasting CPU on static scenes.
     """
 
-    def __init__(self, threshold=25, min_area=500, blur_size=21):
-        """
-        threshold  — pixel brightness change to count as motion (0-255)
-        min_area   — minimum contour area in pixels to trigger motion
-        blur_size  — gaussian blur kernel size (must be odd)
-        """
-        self.threshold = threshold
-        self.min_area  = min_area
-        self.blur_size = blur_size
-        self._prev_frame = None
+    def __init__(self):
+        self.threshold = MOTION_THRESHOLD
+        self.min_area  = MOTION_MIN_AREA
+        self.blur_size = MOTION_BLUR
+
+        self._prev_frame      = None
+        self._last_motion_time = time.time()
 
     def detect(self, frame):
         """
-        Returns True if meaningful motion is detected vs previous frame.
-        Also returns a motion score (0.0 - 1.0) for logging/tuning.
+        Returns (motion_detected: bool, score: float 0.0-1.0).
+        Automatically resets the frame buffer after IDLE_RESET_SECONDS
+        of no motion to prevent false triggers after long static periods.
         """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (self.blur_size, self.blur_size), 0)
 
+        now = time.time()
+
+        # Reset if idle too long
+        if self._prev_frame is not None:
+            idle_time = now - self._last_motion_time
+            if idle_time > IDLE_RESET_SECONDS:
+                logger.debug(
+                    f"მოძრაობა {idle_time:.0f} წამია არ ყოფილა — "
+                    f"ბუფერი განულდა"
+                )
+                self._prev_frame = None
+
+        # First frame — nothing to compare yet
         if self._prev_frame is None:
             self._prev_frame = gray
             return False, 0.0
 
-        # Absolute difference between current and previous frame
+        # Absolute difference
         delta = cv2.absdiff(self._prev_frame, gray)
         self._prev_frame = gray
 
-        # Threshold the delta
-        _, thresh = cv2.threshold(delta, self.threshold, 255, cv2.THRESH_BINARY)
+        # Threshold
+        _, thresh = cv2.threshold(
+            delta, self.threshold, 255, cv2.THRESH_BINARY
+        )
 
-        # Dilate to fill gaps
+        # Dilate to fill small gaps
         thresh = cv2.dilate(thresh, None, iterations=2)
 
         # Find contours
@@ -49,18 +68,23 @@ class MotionDetector:
             thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
-        # Check if any contour is large enough
-        motion_pixels = 0
-        for contour in contours:
-            if cv2.contourArea(contour) >= self.min_area:
-                motion_pixels += cv2.contourArea(contour)
+        # Sum area of significant contours
+        motion_area = sum(
+            cv2.contourArea(c)
+            for c in contours
+            if cv2.contourArea(c) >= self.min_area
+        )
 
         total_pixels = frame.shape[0] * frame.shape[1]
-        score = min(1.0, motion_pixels / total_pixels)
+        score        = min(1.0, motion_area / total_pixels)
 
-        motion_detected = score > 0
-        return motion_detected, score
+        if score > 0:
+            self._last_motion_time = now
+
+        return score > 0, score
 
     def reset(self):
-        """Reset the previous frame buffer."""
-        self._prev_frame = None
+        """Manually reset the frame buffer."""
+        self._prev_frame       = None
+        self._last_motion_time = time.time()
+        logger.debug("მოძრაობის დეტექტორი განულდა")

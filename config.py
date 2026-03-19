@@ -35,6 +35,16 @@ TELEGRAM_BOT_TOKEN = ''         # შეიყვანე შენი Bot Toke
 TELEGRAM_CHAT_ID   = ''         # შეიყვანე შენი Chat ID
 TELEGRAM_COOLDOWN  = 30         # წამი შეტყობინებებს შორის
 
+
+# ── SSL ───────────────────────────────────────────────────────────────
+SSL_ENABLED  = True
+SSL_CERT     = os.path.join(BASE_DIR, 'ssl', 'cert.pem')
+SSL_KEY      = os.path.join(BASE_DIR, 'ssl', 'key.pem')
+
+
+
+
+
 # ── Logging ───────────────────────────────────────────────────────────
 LOG_LEVEL    = 'INFO'           # DEBUG, INFO, WARNING, ERROR
 LOG_MAX_BYTES  = 5 * 1024 * 1024  # 5 მბ მაქსიმალური ლოგ ფაილი

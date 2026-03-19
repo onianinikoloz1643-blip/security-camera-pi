@@ -5,6 +5,7 @@ import logging
 import threading
 from flask import Flask, render_template_string, send_from_directory, jsonify, Response
 from config import WEB_HOST, WEB_PORT
+from auth import require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ _event_listeners_lock = threading.Lock()
 
 
 def push_event(event_type, data):
-    """გაუგზავნე SSE მოვლენა ყველა დაკავშირებულ კლიენტს."""
+    """Send SSE event to all connected clients."""
     message = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
     with _event_listeners_lock:
         dead = []
@@ -45,7 +46,6 @@ HTML_TEMPLATE = '''
     .subtitle{color:#666;font-size:.85em;margin-bottom:20px}
     h2{color:#ccc;margin:24px 0 10px;border-bottom:1px solid #222;padding-bottom:5px;font-size:1.1em}
 
-    /* status bar */
     .statusbar{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
     .stat{background:#1a1a1a;border-radius:8px;padding:10px 16px;font-size:.82em;color:#aaa}
     .stat span{color:#fff;font-weight:bold}
@@ -53,14 +53,12 @@ HTML_TEMPLATE = '''
          background:#4caf50;margin-right:6px;animation:pulse 2s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
-    /* toast */
     #toast{position:fixed;top:20px;right:20px;background:#1e3a1e;border:1px solid #4caf50;
            border-radius:8px;padding:12px 18px;font-size:.85em;color:#a5d6a7;
            display:none;z-index:999;max-width:300px}
     #toast.show{display:block;animation:fadein .3s}
     @keyframes fadein{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 
-    /* grid */
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
     .card{background:#1a1a1a;border-radius:8px;overflow:hidden;transition:transform .2s}
     .card:hover{transform:scale(1.02)}
@@ -70,14 +68,12 @@ HTML_TEMPLATE = '''
     .new-badge{background:#4caf50;color:#000;font-size:.7em;
                padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:bold}
 
-    /* recordings */
     .rec-list{list-style:none}
     .rec-list li{background:#1a1a1a;margin-bottom:6px;padding:10px 14px;
                  border-radius:6px;display:flex;justify-content:space-between;align-items:center}
     .rec-list a{color:#4a9eff;text-decoration:none;font-size:.82em}
     .rec-list a:hover{text-decoration:underline}
 
-    /* disk bar */
     .disk-bar-bg{background:#333;border-radius:4px;height:6px;margin-top:4px;width:120px;display:inline-block}
     .disk-bar-fill{height:6px;border-radius:4px;background:#4caf50;transition:width .5s}
     .disk-bar-fill.warn{background:#ff9800}
@@ -110,7 +106,7 @@ HTML_TEMPLATE = '''
 <div class="grid" id="snap-grid">
   {% if snapshots %}
     {% for snap in snapshots[:12] %}
-    <div class="card" id="card-{{ loop.index }}">
+    <div class="card">
       <img src="/snapshots/{{ snap }}" alt="{{ snap }}" loading="lazy">
       <div class="card-info">
         {% set parts = snap.replace('.jpg','').split('_') %}
@@ -149,13 +145,14 @@ function addSnapshot(filename) {
   const empty = grid.querySelector('.empty');
   if (empty) empty.remove();
 
-  // Remove oldest if more than 12
   const cards = grid.querySelectorAll('.card');
   if (cards.length >= 12) cards[cards.length - 1].remove();
 
   const parts = filename.replace('.jpg','').split('_');
   const label = parts[2] || '';
-  const time  = parts[1] ? `${parts[1].slice(0,2)}:${parts[1].slice(2,4)}:${parts[1].slice(4,6)}` : '';
+  const time  = parts[1]
+    ? `${parts[1].slice(0,2)}:${parts[1].slice(2,4)}:${parts[1].slice(4,6)}`
+    : '';
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -166,17 +163,14 @@ function addSnapshot(filename) {
       <span class="new-badge">NEW</span>
       &nbsp;·&nbsp; ${time}
     </div>`;
-
   grid.insertBefore(card, grid.firstChild);
 
-  // Remove NEW badge after 5 seconds
   setTimeout(() => {
     const badge = card.querySelector('.new-badge');
     if (badge) badge.remove();
   }, 5000);
 }
 
-// ── SSE კავშირი ───────────────────────────────────────────────────────
 const evtSource = new EventSource('/stream');
 
 evtSource.addEventListener('detection', e => {
@@ -215,7 +209,7 @@ evtSource.addEventListener('disk', e => {
 });
 
 evtSource.onerror = () => {
-  console.warn('SSE კავშირი გაწყდა — ხელახლა ცდა...');
+  console.warn('SSE connection lost — retrying...');
 };
 </script>
 </body>
@@ -226,6 +220,7 @@ evtSource.onerror = () => {
 # ── Routes ────────────────────────────────────────────────────────────
 
 @app.route('/')
+@require_auth
 def index():
     snapshots  = storage.list_snapshots()  if storage else []
     recordings = storage.list_recordings() if storage else []
@@ -239,14 +234,14 @@ def index():
 
 
 @app.route('/stream')
+@require_auth
 def stream():
-    """SSE endpoint — კლიენტები ელოდებიან რეალურდროულ მოვლენებს."""
+    """SSE endpoint — clients wait for real-time events."""
     def event_generator():
         q = queue.Queue(maxsize=50)
         with _event_listeners_lock:
             _event_listeners.append(q)
         try:
-            # Keep-alive ping ყოველ 25 წამში
             while True:
                 try:
                     msg = q.get(timeout=25)
@@ -262,18 +257,20 @@ def stream():
         event_generator(),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control':   'no-cache',
+            'Cache-Control':     'no-cache',
             'X-Accel-Buffering': 'no'
         }
     )
 
 
 @app.route('/snapshots/<filename>')
+@require_auth
 def serve_snapshot(filename):
     return send_from_directory(storage.snapshots_dir, filename)
 
 
 @app.route('/recordings/<filename>')
+@require_auth
 def serve_recording(filename):
     return send_from_directory(storage.recordings_dir, filename)
 
@@ -285,14 +282,24 @@ def api_status():
 
 
 # ── Startup ───────────────────────────────────────────────────────────
-
 def start_web(storage_manager):
     global storage
     storage = storage_manager
-    logger.info(f"ვებ-ინტერფეისი გაეშვა: http://{WEB_HOST}:{WEB_PORT}")
+
+    from config import SSL_ENABLED, SSL_CERT, SSL_KEY
+    if SSL_ENABLED and os.path.exists(SSL_CERT) and os.path.exists(SSL_KEY):
+        protocol = "https"
+        ssl_context = (SSL_CERT, SSL_KEY)
+    else:
+        protocol = "http"
+        ssl_context = None
+        logger.warning("SSL not configured — running over plain HTTP")
+
+    logger.info(f"Web interface: {protocol}://raspberrypi.local:{WEB_PORT}")
     app.run(
         host=WEB_HOST,
         port=WEB_PORT,
         threaded=True,
-        use_reloader=False
+        use_reloader=False,
+        ssl_context=ssl_context
     )
