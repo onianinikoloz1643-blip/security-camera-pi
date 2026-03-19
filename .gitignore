@@ -1,0 +1,12 @@
+venv/
+snapshots/
+recordings/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+test_image.jpg
+inspect_model.py
+test_detector.py
+models/detect.tflite
+*.jpg
