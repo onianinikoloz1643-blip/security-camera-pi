@@ -1,11 +1,11 @@
-import requests
-import logging
 import time
+import logging
+import requests
 import cv2
-import os
 from config import (
     TELEGRAM_ENABLED, TELEGRAM_BOT_TOKEN,
-    TELEGRAM_CHAT_ID, TELEGRAM_COOLDOWN
+    TELEGRAM_CHAT_ID, TELEGRAM_COOLDOWN,
+    TELEGRAM_COOLDOWN_PER_LABEL
 )
 
 logger = logging.getLogger(__name__)
@@ -13,46 +13,51 @@ logger = logging.getLogger(__name__)
 
 class TelegramNotifier:
     """
-    აგზავნის შეტყობინებებს და სნეფშოტებს Telegram-ში
-    ობიექტების დეტექტირებისას.
+    Sends one-way detection alerts and snapshots to Telegram.
+    Includes global cooldown and per-label cooldown to prevent spam.
     """
 
     def __init__(self):
-        self.enabled          = TELEGRAM_ENABLED
-        self.token            = TELEGRAM_BOT_TOKEN
-        self.chat_id          = TELEGRAM_CHAT_ID
-        self.cooldown         = TELEGRAM_COOLDOWN
-        self._last_sent_time  = 0
+        self.enabled  = TELEGRAM_ENABLED
+        self.token    = TELEGRAM_BOT_TOKEN
+        self.chat_id  = TELEGRAM_CHAT_ID
+
+        self._last_sent_time   = 0
+        self._last_label_times = {}  # label -> last sent timestamp
 
         if self.enabled and (not self.token or not self.chat_id):
             logger.warning(
-                "Telegram ჩართულია, მაგრამ BOT_TOKEN ან CHAT_ID არ არის შევსებული. "
-                "გამორთულია."
+                "Telegram enabled but BOT_TOKEN or CHAT_ID missing — disabled"
             )
             self.enabled = False
 
-    def _cooldown_ok(self):
-        """შეამოწმე cooldown პერიოდი."""
-        return time.time() - self._last_sent_time >= self.cooldown
+    def _global_cooldown_ok(self):
+        return time.time() - self._last_sent_time >= TELEGRAM_COOLDOWN
+
+    def _label_cooldown_ok(self, label):
+        last = self._last_label_times.get(label, 0)
+        return time.time() - last >= TELEGRAM_COOLDOWN_PER_LABEL
 
     def send_detection(self, frame, detections):
         """
-        გაუგზავნე სნეფშოტი და დეტექტირების შედეგები Telegram-ში.
-        cooldown პერიოდში გამოძახება იგნორირდება.
+        Send snapshot and detection summary to Telegram.
+        Respects both global and per-label cooldowns.
         """
         if not self.enabled:
             return
-        if not self._cooldown_ok():
+        if not self._global_cooldown_ok():
+            return
+
+        # Filter to only labels whose per-label cooldown has passed
+        new_detections = [
+            d for d in detections
+            if self._label_cooldown_ok(d['label'])
+        ]
+        if not new_detections:
             return
 
         try:
-            # აღწერის ტექსტის შედგენა
-            labels  = [d['label'] for d in detections]
-            counts  = {}
-            for l in labels:
-                counts[l] = counts.get(l, 0) + 1
-
-            parts = []
+            # Build caption
             label_ka = {
                 'person':     'ადამიანი',
                 'car':        'მანქანა',
@@ -61,21 +66,29 @@ class TelegramNotifier:
                 'motorcycle': 'მოტოციკლი',
                 'bicycle':    'ველოსიპედი',
             }
-            for label, count in counts.items():
-                ka = label_ka.get(label, label)
-                parts.append(f"{ka}: {count}")
+
+            counts = {}
+            for d in new_detections:
+                counts[d['label']] = counts.get(d['label'], 0) + 1
+
+            parts = [
+                f"{label_ka.get(l, l)}: {c}"
+                for l, c in counts.items()
+            ]
 
             text = (
                 f"🚨 *დეტექტირება*\n"
                 f"📋 {', '.join(parts)}\n"
-                f"🎯 სიზუსტე: {max(d['score'] for d in detections):.0%}"
+                f"🎯 სიზუსტე: "
+                f"{max(d['score'] for d in new_detections):.0%}"
             )
 
-            # კადრის JPEG-ად კოდირება მეხსიერებაში
-            _, img_encoded = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            # Encode frame to JPEG in memory
+            _, img_encoded = cv2.imencode(
+                '.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85]
+            )
             img_bytes = img_encoded.tobytes()
 
-            # სნეფშოტის გაგზავნა
             url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
             response = requests.post(
                 url,
@@ -89,22 +102,29 @@ class TelegramNotifier:
             )
 
             if response.status_code == 200:
-                self._last_sent_time = time.time()
-                logger.info("Telegram შეტყობინება გაიგზავნა")
+                now = time.time()
+                self._last_sent_time = now
+                for d in new_detections:
+                    self._last_label_times[d['label']] = now
+                logger.info(
+                    f"Telegram alert sent — "
+                    f"{list(counts.keys())}"
+                )
             else:
                 logger.warning(
-                    f"Telegram შეცდომა: {response.status_code} — {response.text}"
+                    f"Telegram error: {response.status_code} — "
+                    f"{response.text}"
                 )
 
         except requests.exceptions.Timeout:
-            logger.warning("Telegram timeout — შეტყობინება ვერ გაიგზავნა")
+            logger.warning("Telegram timeout — alert not sent")
         except requests.exceptions.ConnectionError:
-            logger.warning("Telegram კავშირის შეცდომა — ინტერნეტი ხელმისაწვდომია?")
+            logger.warning("Telegram connection error — internet available?")
         except Exception as e:
-            logger.error(f"Telegram მოულოდნელი შეცდომა: {e}")
+            logger.error(f"Telegram unexpected error: {e}")
 
     def send_message(self, text):
-        """გაუგზავნე მარტივი ტექსტური შეტყობინება."""
+        """Send a plain text message."""
         if not self.enabled:
             return
         try:
@@ -119,4 +139,5 @@ class TelegramNotifier:
                 timeout=10
             )
         except Exception as e:
-            logger.error(f"Telegram შეტყობინების შეცდომა: {e}")
+            logger.error(f"Telegram message error: {e}")
+

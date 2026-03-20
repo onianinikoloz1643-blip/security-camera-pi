@@ -23,6 +23,7 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
     last_detection_time = 0
     last_snapshot_time  = 0
+    last_disk_update    = 0
     motion_skip_count   = 0
 
     logger.info("Camera loop started")
@@ -34,32 +35,35 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
             # ── Motion filter ─────────────────────────────────────────
             if MOTION_ENABLED:
-                motion_detected, motion_score = motion.detect(frame)
+                motion_detected, _ = motion.detect(frame)
                 if not motion_detected:
                     motion_skip_count += 1
                     if motion_skip_count % 100 == 0:
                         logger.debug(
                             f"No motion — {motion_skip_count} frames skipped"
                         )
+                    # Still write frame if recording is active
                     if camera.is_recording:
-                        camera.write_frame(frame)
+                        camera.write_frame(frame, storage)
                     time.sleep(1.0 / 10)
                     continue
 
                 motion_skip_count = 0
 
-            # ── ML Detection ──────────────────────────────────────────
+            # ── Check if bot is armed ─────────────────────────────────
             if not bot.armed:
                 time.sleep(1.0 / 10)
                 continue
 
+            # ── ML Detection ──────────────────────────────────────────
             detections = detector.detect(frame)
 
             if detections:
                 labels = [d['label'] for d in detections]
                 scores = [d['score'] for d in detections]
                 logger.info(
-                    f"Detected: {list(zip(labels, [f'{s:.0%}' for s in scores]))}"
+                    f"Detected: "
+                    f"{list(zip(labels, [f'{s:.0%}' for s in scores]))}"
                 )
 
                 annotated = camera.draw_detections(frame.copy(), detections)
@@ -80,7 +84,7 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                 # Telegram alert
                 notifier.send_detection(annotated, detections)
 
-                # Start recording if not already
+                # Start recording if not already active
                 if not camera.is_recording:
                     camera.start_recording(storage)
                     push_event('recording_start', {})
@@ -88,7 +92,7 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                 last_detection_time = now
 
             else:
-                # Stop recording after cooldown
+                # Stop recording after cooldown with no detections
                 if camera.is_recording:
                     if now - last_detection_time >= RECORDING_COOLDOWN:
                         camera.stop_recording(storage)
@@ -98,12 +102,13 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
             # Write frame to active recording
             if camera.is_recording:
-                camera.write_frame(frame)
+                camera.write_frame(frame, storage)
 
-            # SSE disk update every 60 seconds
-            if int(now) % 60 == 0:
+            # ── Disk update — reliable timer ──────────────────────────
+            if now - last_disk_update >= 60:
                 stats = storage.get_stats()
                 push_event('disk', {'percent': stats['disk_percent']})
+                last_disk_update = now
 
             time.sleep(1.0 / 10)
 
@@ -119,7 +124,16 @@ def main():
     logger.info("Security camera system starting...")
     logger.info("=" * 50)
 
-    # Initialize components
+    # Validate config before anything else
+    try:
+        from config import validate_config
+        validate_config()
+        logger.info("Configuration validated OK")
+    except ValueError as e:
+        logger.critical(f"Invalid configuration:\n{e}")
+        return
+
+    # Initialize all components
     try:
         storage  = StorageManager()
         detector = ObjectDetector()
@@ -138,7 +152,7 @@ def main():
         daemon=True
     )
     web_thread.start()
-    logger.info(f"Web interface: http://raspberrypi.local:{WEB_PORT}")
+    logger.info(f"Web interface: https://raspberrypi.local:{WEB_PORT}")
 
     # Telegram startup message and bot
     notifier.send_message("✅ *Security camera started*")

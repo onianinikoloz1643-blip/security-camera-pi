@@ -28,3 +28,5 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+benchmark_results.txt
+test_camera.jpg

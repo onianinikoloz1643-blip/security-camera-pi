@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import logging
 from config import FRAME_WIDTH, FRAME_HEIGHT, FPS
 
@@ -11,8 +12,10 @@ class Camera:
         self.height = FRAME_HEIGHT
         self.fps    = FPS
         self.picam  = None
+
         self._recording_writer = None
         self._recording_path   = None
+        self._recording_start  = None
         self._is_recording     = False
 
     def start(self):
@@ -21,18 +24,18 @@ class Camera:
             from picamera2 import Picamera2
         except ImportError:
             raise RuntimeError(
-                "picamera2 არ არის დაინსტალირებული. "
-                "გაუშვი: sudo apt install python3-picamera2"
+                "picamera2 is not installed. "
+                "Run: sudo apt install python3-picamera2"
             )
 
         try:
             self.picam = Picamera2()
         except Exception as e:
             raise RuntimeError(
-                f"კამერის ინიციალიზაცია ვერ მოხერხდა. "
-                f"დარწმუნდი რომ კამერა მიერთებულია და "
-                f"config.txt სწორად არის კონფიგურირებული.\n"
-                f"დეტალი: {e}"
+                f"Camera initialization failed. "
+                f"Make sure the camera is connected and "
+                f"config.txt is correctly configured.\n"
+                f"Detail: {e}"
             )
 
         try:
@@ -43,40 +46,41 @@ class Camera:
             self.picam.configure(config)
             self.picam.start()
             logger.info(
-                f"კამერა გაეშვა — {self.width}x{self.height} @ {self.fps}fps"
+                f"Camera started — {self.width}x{self.height} @ {self.fps}fps"
             )
         except Exception as e:
             self.picam = None
-            raise RuntimeError(
-                f"კამერის კონფიგურაცია ვერ მოხერხდა: {e}"
-            )
+            raise RuntimeError(f"Camera configuration failed: {e}")
 
     def stop(self):
         """Stop the camera safely."""
         if self.picam:
             try:
                 self.picam.stop()
-                logger.info("კამერა გამოირთო")
+                logger.info("Camera stopped")
             except Exception as e:
-                logger.warning(f"კამერის გამორთვის შეცდომა: {e}")
+                logger.warning(f"Camera stop error: {e}")
             finally:
                 self.picam = None
 
     def capture_frame(self):
-        """Capture a single frame and return as BGR numpy array."""
+        """
+        Capture a single frame and return as BGR numpy array.
+        numpy is imported at module level for efficiency —
+        no repeated import overhead on every frame.
+        """
         if not self.picam:
             raise RuntimeError(
-                "კამერა არ არის გაშვებული — გამოიძახე start() პირველ რიგში"
+                "Camera not started — call start() first"
             )
         try:
-            import numpy as np
             frame_rgb = self.picam.capture_array()
             return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         except Exception as e:
-            raise RuntimeError(f"კადრის გადაღების შეცდომა: {e}")
+            raise RuntimeError(f"Frame capture error: {e}")
 
     def draw_detections(self, frame, detections):
-        """Draw bounding boxes and labels on frame."""
+        """Draw bounding boxes and confidence labels on frame."""
         h, w = frame.shape[:2]
         for det in detections:
             label = det['label']
@@ -86,6 +90,7 @@ class Camera:
             x1, y1 = int(xmin * w), int(ymin * h)
             x2, y2 = int(xmax * w), int(ymax * h)
 
+            # Red for person, blue for vehicles
             color = (0, 0, 255) if label == 'person' else (255, 100, 0)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
@@ -93,6 +98,7 @@ class Camera:
             (tw, th), _ = cv2.getTextSize(
                 text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
             )
+            # Filled background for label text
             cv2.rectangle(
                 frame, (x1, y1 - th - 10), (x1 + tw + 4, y1), color, -1
             )
@@ -103,26 +109,47 @@ class Camera:
         return frame
 
     def start_recording(self, storage):
-        """Begin video recording."""
+        """Begin video recording via storage manager."""
         if not self._is_recording:
-            self._recording_writer, self._recording_path = \
+            self._recording_writer, self._recording_path, self._recording_start = \
                 storage.start_recording(self.width, self.height, self.fps)
             self._is_recording = True
 
-    def write_frame(self, frame):
-        """Write a frame to the current recording."""
-        if self._is_recording and self._recording_writer:
-            try:
-                self._recording_writer.write(frame)
-            except Exception as e:
-                logger.error(f"კადრის ჩაწერის შეცდომა: {e}")
+    def write_frame(self, frame, storage=None):
+        """
+        Write frame to current recording.
+        If storage is provided, checks for max recording length
+        and auto-splits into a new file if needed.
+        """
+        if not self._is_recording or not self._recording_writer:
+            return
+
+        # Auto-split if recording exceeds MAX_RECORDING_SECONDS
+        if storage and self._recording_start:
+            if storage.should_split_recording(self._recording_start):
+                logger.info("Max recording length reached — splitting file")
+                storage.stop_recording(
+                    self._recording_writer, self._recording_path
+                )
+                self._recording_writer, self._recording_path, \
+                    self._recording_start = storage.start_recording(
+                        self.width, self.height, self.fps
+                    )
+
+        try:
+            self._recording_writer.write(frame)
+        except Exception as e:
+            logger.error(f"Frame write error: {e}")
 
     def stop_recording(self, storage):
         """Stop current video recording."""
         if self._is_recording:
-            storage.stop_recording(self._recording_writer, self._recording_path)
+            storage.stop_recording(
+                self._recording_writer, self._recording_path
+            )
             self._recording_writer = None
             self._recording_path   = None
+            self._recording_start  = None
             self._is_recording     = False
 
     @property
