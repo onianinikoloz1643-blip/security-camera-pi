@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import logging
-from config import FRAME_WIDTH, FRAME_HEIGHT, FPS
+from config import FRAME_WIDTH, FRAME_HEIGHT, FPS, CAMERA_HFLIP, CAMERA_VFLIP
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class Camera:
         """Initialize and start the camera with graceful error handling."""
         try:
             from picamera2 import Picamera2
+            from libcamera import Transform
         except ImportError:
             raise RuntimeError(
                 "picamera2 is not installed. "
@@ -41,7 +42,8 @@ class Camera:
         try:
             config = self.picam.create_video_configuration(
                 main={"format": "RGB888", "size": (self.width, self.height)},
-                controls={"FrameRate": self.fps}
+                controls={"FrameRate": self.fps},
+                transform=Transform(hflip=CAMERA_HFLIP, vflip=CAMERA_VFLIP)
             )
             self.picam.configure(config)
             self.picam.start()

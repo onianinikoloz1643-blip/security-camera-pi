@@ -12,6 +12,8 @@ LABEL_PATH  = os.path.join(BASE_DIR, 'models', 'labelmap.txt')
 FRAME_WIDTH  = 1280
 FRAME_HEIGHT = 720
 FPS          = 10
+CAMERA_HFLIP = True   # Horizontal flip — pair with VFLIP for a 180°-mounted camera
+CAMERA_VFLIP = True   # Vertical flip — corrects an upside-down image
 
 # ── Detection ─────────────────────────────────────────────────────────
 DETECTION_THRESHOLD = 0.4   # Min confidence for detection (0.0-1.0)
