@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import cv2
 from ai_edge_litert import interpreter as litert
@@ -6,7 +7,11 @@ from config import (
     LABEL_PATH,
     DETECTION_THRESHOLD,
     CONSECUTIVE_FRAMES_REQUIRED,
+    DETECTION_DEBUG,
+    DETECTION_DEBUG_FLOOR,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ObjectDetector:
@@ -45,21 +50,34 @@ class ObjectDetector:
         count   = int(self.interpreter.get_tensor(self.output_details[3]['index'])[0])
 
         detections = []
+        debug_candidates = []  # (label, score) for security labels, pre-threshold
         for i in range(count):
             score = float(scores[i])
-            if score < self.threshold:
-                continue
             class_idx = int(classes[i])
             if class_idx >= len(self.labels):
                 continue
             label = self.labels[class_idx]
             if label not in self.SECURITY_LABELS:
                 continue
+            if DETECTION_DEBUG and score >= DETECTION_DEBUG_FLOOR:
+                debug_candidates.append((label, score))
+            if score < self.threshold:
+                continue
             detections.append({
                 'label': label,
                 'score': score,
                 'box':   boxes[i].tolist()
             })
+
+        # Diagnostic: show what the model saw BEFORE the threshold filter, so we
+        # can tell whether a missed person was never detected or just scored low.
+        if DETECTION_DEBUG and debug_candidates:
+            passed = [f"{l} {s:.2f}" for l, s in debug_candidates if s >= self.threshold]
+            below  = [f"{l} {s:.2f}" for l, s in debug_candidates if s < self.threshold]
+            logger.info(
+                f"RAW thr={self.threshold:.2f} "
+                f"passed=[{', '.join(passed)}] below=[{', '.join(below)}]"
+            )
 
         if not detections:
             self._label_streaks = {}
@@ -77,4 +95,18 @@ class ObjectDetector:
             label for label, streak in self._label_streaks.items()
             if streak >= self.consecutive_required
         }
+
+        # Diagnostic: show detections held back by the consecutive-frames filter.
+        if DETECTION_DEBUG:
+            pending = {
+                l: self._label_streaks[l]
+                for l in current_labels
+                if l not in confirmed_labels
+            }
+            if pending:
+                logger.info(
+                    f"FILTER need {self.consecutive_required} in a row — "
+                    f"confirmed={sorted(confirmed_labels)} pending={pending}"
+                )
+
         return [d for d in detections if d['label'] in confirmed_labels]

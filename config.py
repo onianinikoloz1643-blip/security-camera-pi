@@ -19,6 +19,10 @@ CONSECUTIVE_FRAMES_REQUIRED = 2  # Require N consecutive frames per label
 RECORDING_COOLDOWN  = 10    # Seconds to keep recording after last detection
 SNAPSHOT_INTERVAL   = 3     # Min seconds between snapshots
 
+# ── Detection diagnostics (TEMPORARY — turn off before the stability run) ──
+DETECTION_DEBUG       = True   # Log raw model scores before threshold + consecutive filters
+DETECTION_DEBUG_FLOOR = 0.20   # Min raw score worth logging (keep below DETECTION_THRESHOLD)
+
 # ── Motion filter ─────────────────────────────────────────────────────
 MOTION_ENABLED   = True
 MOTION_THRESHOLD = 25
