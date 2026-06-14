@@ -7,7 +7,7 @@ from datetime import datetime
 from config import (
     BASE_DIR, LOG_LEVEL, LOG_MAX_BYTES,
     LOG_BACKUP_COUNT, STORAGE_MAX_PERCENT,
-    MAX_RECORDING_SECONDS, FPS
+    MAX_RECORDING_SECONDS
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ class StorageManager:
         self.snapshots_dir  = os.path.join(BASE_DIR, 'snapshots')
         self.recordings_dir = os.path.join(BASE_DIR, 'recordings')
         self.logs_dir       = os.path.join(BASE_DIR, 'logs')
+        self._active_recordings = set()
 
         for d in [self.snapshots_dir, self.recordings_dir, self.logs_dir]:
             os.makedirs(d, exist_ok=True)
@@ -78,7 +79,7 @@ class StorageManager:
         for directory in [self.recordings_dir, self.snapshots_dir]:
             for f in os.listdir(directory):
                 path = os.path.join(directory, f)
-                if os.path.isfile(path):
+                if os.path.isfile(path) and path not in self._active_recordings:
                     all_files.append((os.path.getmtime(path), path))
 
         all_files.sort()  # oldest first
@@ -94,6 +95,11 @@ class StorageManager:
             except Exception as e:
                 logger.error(f"Delete error {path}: {e}")
 
+        if self.get_disk_usage_percent() >= STORAGE_MAX_PERCENT:
+            logger.warning(
+                "Cleanup finished but disk is still above threshold. "
+                "Manual cleanup may be required."
+            )
         logger.info(f"Cleanup complete — {deleted} files deleted")
 
     # ── Snapshots ─────────────────────────────────────────────────────
@@ -104,7 +110,9 @@ class StorageManager:
         labels   = '_'.join(sorted(set(d['label'] for d in detections)))
         filename = f"{self._timestamp()}_{labels}.jpg"
         filepath = os.path.join(self.snapshots_dir, filename)
-        cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        saved = cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        if not saved:
+            raise RuntimeError(f"Snapshot write failed: {filepath}")
         logger.info(f"Snapshot saved: {filename}")
         return filepath
 
@@ -119,14 +127,39 @@ class StorageManager:
         writer    = cv2.VideoWriter(
             filepath, fourcc, fps, (frame_width, frame_height)
         )
+        if not writer.isOpened():
+            writer.release()
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
+            raise RuntimeError(f"Recording writer could not open: {filepath}")
         start_time = datetime.now()
+        self._active_recordings.add(filepath)
         logger.info(f"Recording started: {filename}")
         return writer, filepath, start_time
 
     def stop_recording(self, writer, filepath):
         """Stop and finalise a video recording."""
-        writer.release()
-        logger.info(f"Recording stopped: {os.path.basename(filepath)}")
+        if writer is None or filepath is None:
+            return
+
+        try:
+            writer.release()
+        finally:
+            self._active_recordings.discard(filepath)
+
+        if os.path.exists(filepath):
+            size_mb = os.path.getsize(filepath) / (1024 ** 2)
+            logger.info(
+                f"Recording stopped: {os.path.basename(filepath)} "
+                f"({size_mb:.1f} MB)"
+            )
+        else:
+            logger.warning(
+                f"Recording stopped but file is missing: {filepath}"
+            )
 
     def should_split_recording(self, start_time):
         """

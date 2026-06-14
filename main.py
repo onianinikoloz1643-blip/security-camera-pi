@@ -4,8 +4,8 @@ import logging
 import threading
 
 from config import (
-    BASE_DIR, RECORDING_COOLDOWN, SNAPSHOT_INTERVAL,
-    MOTION_ENABLED, WEB_PORT
+    RECORDING_COOLDOWN, SNAPSHOT_INTERVAL,
+    MOTION_ENABLED, WEB_PORT, FPS
 )
 from storage import StorageManager, setup_logging
 from detector import ObjectDetector
@@ -33,6 +33,19 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
             frame = camera.capture_frame()
             now   = time.time()
 
+            if not bot.armed:
+                if camera.is_recording:
+                    camera.stop_recording(storage)
+                    push_event('recording_stop', {
+                        'total': len(storage.list_recordings())
+                    })
+                if now - last_disk_update >= 60:
+                    stats = storage.get_stats()
+                    push_event('disk', {'percent': stats['disk_percent']})
+                    last_disk_update = now
+                time.sleep(1.0 / FPS)
+                continue
+
             # ── Motion filter ─────────────────────────────────────────
             if MOTION_ENABLED:
                 motion_detected, _ = motion.detect(frame)
@@ -45,15 +58,10 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                     # Still write frame if recording is active
                     if camera.is_recording:
                         camera.write_frame(frame, storage)
-                    time.sleep(1.0 / 10)
+                    time.sleep(1.0 / FPS)
                     continue
 
                 motion_skip_count = 0
-
-            # ── Check if bot is armed ─────────────────────────────────
-            if not bot.armed:
-                time.sleep(1.0 / 10)
-                continue
 
             # ── ML Detection ──────────────────────────────────────────
             detections = detector.detect(frame)
@@ -110,7 +118,7 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                 push_event('disk', {'percent': stats['disk_percent']})
                 last_disk_update = now
 
-            time.sleep(1.0 / 10)
+            time.sleep(1.0 / FPS)
 
         except Exception as e:
             logger.error(f"Camera loop error: {e}", exc_info=True)

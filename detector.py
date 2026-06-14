@@ -1,7 +1,12 @@
 import numpy as np
 import cv2
 from ai_edge_litert import interpreter as litert
-from config import MODEL_PATH, LABEL_PATH, DETECTION_THRESHOLD
+from config import (
+    MODEL_PATH,
+    LABEL_PATH,
+    DETECTION_THRESHOLD,
+    CONSECUTIVE_FRAMES_REQUIRED,
+)
 
 
 class ObjectDetector:
@@ -9,6 +14,8 @@ class ObjectDetector:
 
     def __init__(self):
         self.threshold = DETECTION_THRESHOLD
+        self.consecutive_required = CONSECUTIVE_FRAMES_REQUIRED
+        self._label_streaks = {}
 
         with open(LABEL_PATH, 'r') as f:
             self.labels = [line.strip() for line in f.readlines()]
@@ -54,4 +61,20 @@ class ObjectDetector:
                 'box':   boxes[i].tolist()
             })
 
-        return detections
+        if not detections:
+            self._label_streaks = {}
+            return []
+
+        if self.consecutive_required <= 1:
+            return detections
+
+        current_labels = {d['label'] for d in detections}
+        self._label_streaks = {
+            label: self._label_streaks.get(label, 0) + 1
+            for label in current_labels
+        }
+        confirmed_labels = {
+            label for label, streak in self._label_streaks.items()
+            if streak >= self.consecutive_required
+        }
+        return [d for d in detections if d['label'] in confirmed_labels]

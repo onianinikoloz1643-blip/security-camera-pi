@@ -1,7 +1,10 @@
 import os
 
 # ── Paths ─────────────────────────────────────────────────────────────
-BASE_DIR    = os.path.expanduser('~/security_camera')
+# Default to the repository root so a normal git clone works out of the box.
+BASE_DIR    = os.path.abspath(
+    os.getenv('SECURITY_CAMERA_BASE_DIR', os.path.dirname(__file__))
+)
 MODEL_PATH  = os.path.join(BASE_DIR, 'models', 'detect.tflite')
 LABEL_PATH  = os.path.join(BASE_DIR, 'models', 'labelmap.txt')
 
@@ -12,6 +15,7 @@ FPS          = 10
 
 # ── Detection ─────────────────────────────────────────────────────────
 DETECTION_THRESHOLD = 0.4   # Min confidence for detection (0.0-1.0)
+CONSECUTIVE_FRAMES_REQUIRED = 2  # Require N consecutive frames per label
 RECORDING_COOLDOWN  = 10    # Seconds to keep recording after last detection
 SNAPSHOT_INTERVAL   = 3     # Min seconds between snapshots
 
@@ -68,9 +72,18 @@ def validate_config():
         errors.append(
             f"RECORDING_COOLDOWN must be >= 0, got {RECORDING_COOLDOWN}"
         )
+    if CONSECUTIVE_FRAMES_REQUIRED <= 0:
+        errors.append(
+            "CONSECUTIVE_FRAMES_REQUIRED must be >= 1, "
+            f"got {CONSECUTIVE_FRAMES_REQUIRED}"
+        )
     if SNAPSHOT_INTERVAL < 0:
         errors.append(
             f"SNAPSHOT_INTERVAL must be >= 0, got {SNAPSHOT_INTERVAL}"
+        )
+    if MAX_RECORDING_SECONDS <= 0:
+        errors.append(
+            f"MAX_RECORDING_SECONDS must be > 0, got {MAX_RECORDING_SECONDS}"
         )
     if not 0 < STORAGE_MAX_PERCENT <= 100:
         errors.append(

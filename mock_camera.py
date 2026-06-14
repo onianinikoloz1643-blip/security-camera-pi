@@ -22,6 +22,7 @@ class MockCamera:
         self._is_recording = False
         self._recording_writer = None
         self._recording_path   = None
+        self._recording_start  = None
 
     def start(self):
         """Load the test image as the mock frame source."""
@@ -83,19 +84,30 @@ class MockCamera:
 
     def start_recording(self, storage):
         if not self._is_recording:
-            self._recording_writer, self._recording_path = \
+            self._recording_writer, self._recording_path, self._recording_start = \
                 storage.start_recording(self.width, self.height, self.fps)
             self._is_recording = True
 
-    def write_frame(self, frame):
-        if self._is_recording and self._recording_writer:
-            self._recording_writer.write(frame)
+    def write_frame(self, frame, storage=None):
+        if not self._is_recording or not self._recording_writer:
+            return
+
+        if storage and self._recording_start:
+            if storage.should_split_recording(self._recording_start):
+                storage.stop_recording(
+                    self._recording_writer, self._recording_path
+                )
+                self._recording_writer, self._recording_path, self._recording_start = \
+                    storage.start_recording(self.width, self.height, self.fps)
+
+        self._recording_writer.write(frame)
 
     def stop_recording(self, storage):
         if self._is_recording:
             storage.stop_recording(self._recording_writer, self._recording_path)
             self._recording_writer = None
             self._recording_path   = None
+            self._recording_start  = None
             self._is_recording     = False
 
     @property

@@ -276,6 +276,7 @@ def serve_recording(filename):
 
 
 @app.route('/api/status')
+@require_auth
 def api_status():
     stats = storage.get_stats() if storage else {}
     return jsonify(stats)
