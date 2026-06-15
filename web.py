@@ -84,7 +84,8 @@ HTML_TEMPLATE = '''
     #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;
               align-items:center;justify-content:center;z-index:1000;cursor:zoom-out;padding:20px}
     #lightbox.show{display:flex}
-    #lightbox img{max-width:95%;max-height:95%;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,.8)}
+    #lightbox img{max-width:95%;max-height:95%;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,.8);
+                  transition:transform .06s ease-out}
   </style>
 </head>
 <body>
@@ -142,12 +143,30 @@ const toast = document.getElementById('toast');
 
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
+let lbScale = 1;
+
+function openLightbox(src) {
+  lbScale = 1;
+  lightboxImg.style.transform = 'scale(1)';
+  lightboxImg.src = src;
+  lightbox.classList.add('show');
+}
+
 document.getElementById('snap-grid').addEventListener('click', e => {
-  if (e.target.tagName === 'IMG') {
-    lightboxImg.src = e.target.src;
-    lightbox.classList.add('show');
-  }
+  if (e.target.tagName === 'IMG') openLightbox(e.target.src);
 });
+
+// Mouse-wheel zooms toward the cursor (1x–5x); a plain click closes.
+lightbox.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = lightboxImg.getBoundingClientRect();
+  const ox = ((e.clientX - rect.left) / rect.width) * 100;
+  const oy = ((e.clientY - rect.top) / rect.height) * 100;
+  lightboxImg.style.transformOrigin = ox + '% ' + oy + '%';
+  lbScale = Math.max(1, Math.min(5, lbScale + (e.deltaY < 0 ? 0.2 : -0.2)));
+  lightboxImg.style.transform = 'scale(' + lbScale + ')';
+}, { passive: false });
+
 lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
 
 function showToast(msg) {
