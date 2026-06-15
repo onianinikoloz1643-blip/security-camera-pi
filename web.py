@@ -62,7 +62,7 @@ HTML_TEMPLATE = '''
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
     .card{background:#1a1a1a;border-radius:8px;overflow:hidden;transition:transform .2s}
     .card:hover{transform:scale(1.02)}
-    .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover}
+    .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
     .card-info{padding:8px 12px;font-size:.78em;color:#888}
     .card-info .label{color:#fff;font-weight:bold;text-transform:capitalize}
     .new-badge{background:#4caf50;color:#000;font-size:.7em;
@@ -80,10 +80,16 @@ HTML_TEMPLATE = '''
     .disk-bar-fill.danger{background:#f44336}
 
     .empty{color:#444;font-style:italic;padding:12px 0;font-size:.9em}
+
+    #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;
+              align-items:center;justify-content:center;z-index:1000;cursor:zoom-out;padding:20px}
+    #lightbox.show{display:flex}
+    #lightbox img{max-width:95%;max-height:95%;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,.8)}
   </style>
 </head>
 <body>
 <div id="toast"></div>
+<div id="lightbox"><img id="lightbox-img" src="" alt=""></div>
 
 <h1>🎥 უსაფრთხოების კამერა</h1>
 <p class="subtitle">რეალურდროული განახლება Server-Sent Events-ის გამოყენებით</p>
@@ -133,6 +139,16 @@ HTML_TEMPLATE = '''
 
 <script>
 const toast = document.getElementById('toast');
+
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+document.getElementById('snap-grid').addEventListener('click', e => {
+  if (e.target.tagName === 'IMG') {
+    lightboxImg.src = e.target.src;
+    lightbox.classList.add('show');
+  }
+});
+lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
 
 function showToast(msg) {
   toast.textContent = msg;
