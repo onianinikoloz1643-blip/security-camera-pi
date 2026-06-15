@@ -88,7 +88,8 @@ HTML_TEMPLATE = '''
               align-items:center;justify-content:center;z-index:1000;cursor:zoom-out;padding:20px}
     #lightbox.show{display:flex}
     #lightbox img{max-width:95%;max-height:95%;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,.8);
-                  transition:transform .06s ease-out}
+                  cursor:grab}
+    #lightbox img:active{cursor:grabbing}
   </style>
 </head>
 <body>
@@ -138,11 +139,17 @@ const toast = document.getElementById('toast');
 
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
-let lbScale = 1;
+let lbScale = 1, lbX = 0, lbY = 0;
+let lbDragging = false, lbMoved = false, lbStartX = 0, lbStartY = 0;
+
+function lbApply() {
+  lightboxImg.style.transform =
+    'translate(' + lbX + 'px,' + lbY + 'px) scale(' + lbScale + ')';
+}
 
 function openLightbox(src) {
-  lbScale = 1;
-  lightboxImg.style.transform = 'scale(1)';
+  lbScale = 1; lbX = 0; lbY = 0;
+  lbApply();
   lightboxImg.src = src;
   lightbox.classList.add('show');
 }
@@ -154,18 +161,34 @@ document.getElementById('rec-container').addEventListener('click', e => {
   if (e.target.tagName === 'IMG') openLightbox(e.target.src);
 });
 
-// Mouse-wheel zooms toward the cursor (1x–5x); a plain click closes.
+// Wheel zooms (1x-5x); drag pans when zoomed; click closes (unless dragging).
 lightbox.addEventListener('wheel', e => {
   e.preventDefault();
-  const rect = lightboxImg.getBoundingClientRect();
-  const ox = ((e.clientX - rect.left) / rect.width) * 100;
-  const oy = ((e.clientY - rect.top) / rect.height) * 100;
-  lightboxImg.style.transformOrigin = ox + '% ' + oy + '%';
-  lbScale = Math.max(1, Math.min(5, lbScale + (e.deltaY < 0 ? 0.2 : -0.2)));
-  lightboxImg.style.transform = 'scale(' + lbScale + ')';
+  lbScale = Math.max(1, Math.min(5, lbScale + (e.deltaY < 0 ? 0.25 : -0.25)));
+  if (lbScale === 1) { lbX = 0; lbY = 0; }
+  lbApply();
 }, { passive: false });
 
-lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
+lightboxImg.addEventListener('mousedown', e => {
+  if (lbScale <= 1) return;
+  e.preventDefault();
+  lbDragging = true; lbMoved = false;
+  lbStartX = e.clientX - lbX;
+  lbStartY = e.clientY - lbY;
+});
+window.addEventListener('mousemove', e => {
+  if (!lbDragging) return;
+  lbX = e.clientX - lbStartX;
+  lbY = e.clientY - lbStartY;
+  lbMoved = true;
+  lbApply();
+});
+window.addEventListener('mouseup', () => { lbDragging = false; });
+
+lightbox.addEventListener('click', () => {
+  if (lbMoved) { lbMoved = false; return; }
+  lightbox.classList.remove('show');
+});
 
 function showToast(msg) {
   toast.textContent = msg;
