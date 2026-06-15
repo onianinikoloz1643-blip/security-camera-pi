@@ -4,7 +4,7 @@ import logging
 import threading
 
 from config import (
-    RECORDING_COOLDOWN, SNAPSHOT_INTERVAL,
+    RECORDING_COOLDOWN,
     MOTION_ENABLED, WEB_PORT, FPS
 )
 from storage import StorageManager, setup_logging
@@ -22,7 +22,6 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
     """Main loop: capture → motion → detect → store."""
 
     last_detection_time = 0
-    last_snapshot_time  = 0
     last_disk_update    = 0
     motion_skip_count   = 0
 
@@ -74,26 +73,23 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                     f"{list(zip(labels, [f'{s:.0%}' for s in scores]))}"
                 )
 
-                annotated = camera.draw_detections(frame.copy(), detections)
-
-                # Snapshot (rate limited)
-                if now - last_snapshot_time >= SNAPSHOT_INTERVAL:
-                    filepath = storage.save_snapshot(annotated, detections)
-                    filename = os.path.basename(filepath)
-                    push_event('snapshot', {
-                        'filename': filename,
-                        'total':    len(storage.list_snapshots())
-                    })
-                    last_snapshot_time = now
-
-                # SSE detection event
+                # SSE detection event (live toast, every frame)
                 push_event('detection', {'labels': list(set(labels))})
 
-                # Telegram alert
-                notifier.send_detection(annotated, detections)
-
-                # Start recording if not already active
+                # New event: person appeared after an idle gap. Save ONE
+                # snapshot + send ONE alert + start the clip — instead of a
+                # fresh snapshot every few seconds.
                 if not camera.is_recording:
+                    annotated = camera.draw_detections(frame.copy(), detections)
+
+                    filepath = storage.save_snapshot(annotated, detections)
+                    push_event('snapshot', {
+                        'filename': os.path.basename(filepath),
+                        'total':    len(storage.list_snapshots())
+                    })
+
+                    notifier.send_detection(annotated, detections)
+
                     camera.start_recording(storage)
                     push_event('recording_start', {})
 

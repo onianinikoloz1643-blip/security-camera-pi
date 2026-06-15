@@ -11,7 +11,7 @@ import logging
 import threading
 
 from config import (
-    RECORDING_COOLDOWN, SNAPSHOT_INTERVAL,
+    RECORDING_COOLDOWN,
     MOTION_ENABLED, WEB_PORT, FPS
 )
 from storage import StorageManager, setup_logging
@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 def run_camera_loop(camera, detector, motion, storage, notifier, bot):
     last_detection_time = 0
-    last_snapshot_time  = 0
     last_disk_update    = 0
     motion_skip_count   = 0
 
@@ -71,21 +70,19 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                     f"Detected: {list(zip(labels, [f'{s:.0%}' for s in scores]))}"
                 )
 
-                annotated = camera.draw_detections(frame.copy(), detections)
-
-                if now - last_snapshot_time >= SNAPSHOT_INTERVAL:
-                    filepath = storage.save_snapshot(annotated, detections)
-                    filename = os.path.basename(filepath)
-                    push_event('snapshot', {
-                        'filename': filename,
-                        'total':    len(storage.list_snapshots())
-                    })
-                    last_snapshot_time = now
-
                 push_event('detection', {'labels': list(set(labels))})
-                notifier.send_detection(annotated, detections)
 
                 if not camera.is_recording:
+                    annotated = camera.draw_detections(frame.copy(), detections)
+
+                    filepath = storage.save_snapshot(annotated, detections)
+                    push_event('snapshot', {
+                        'filename': os.path.basename(filepath),
+                        'total':    len(storage.list_snapshots())
+                    })
+
+                    notifier.send_detection(annotated, detections)
+
                     camera.start_recording(storage)
                     push_event('recording_start', {})
 

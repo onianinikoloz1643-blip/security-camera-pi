@@ -128,6 +128,7 @@ HTML_TEMPLATE = '''
 </div>
 
 <h2>ჩანაწერები</h2>
+<div id="rec-container">
 {% if recordings %}
 <ul class="rec-list" id="rec-list">
   {% for rec in recordings[:20] %}
@@ -137,6 +138,7 @@ HTML_TEMPLATE = '''
 {% else %}
 <p class="empty">ჩანაწერები ჯერ არ არის.</p>
 {% endif %}
+</div>
 
 <script>
 const toast = document.getElementById('toast');
@@ -232,7 +234,23 @@ evtSource.addEventListener('recording_stop', e => {
   const data = JSON.parse(e.data);
   document.getElementById('rec-count').textContent = data.total;
   showToast('⏹ ჩაწერა დასრულდა');
+  refreshRecordings();
 });
+
+function refreshRecordings() {
+  fetch('/api/recordings').then(r => r.json()).then(list => {
+    const c = document.getElementById('rec-container');
+    if (!c) return;
+    if (!list.length) {
+      c.innerHTML = '<p class="empty">ჩანაწერები ჯერ არ არის.</p>';
+      return;
+    }
+    const items = list.slice(0, 20).map(rec =>
+      `<li><span>${rec}</span><a href="/recordings/${rec}" download>⬇ გადმოწერა</a></li>`
+    ).join('');
+    c.innerHTML = `<ul class="rec-list" id="rec-list">${items}</ul>`;
+  }).catch(() => {});
+}
 
 evtSource.addEventListener('disk', e => {
   const data = JSON.parse(e.data);
@@ -315,6 +333,12 @@ def serve_recording(filename):
 def api_status():
     stats = storage.get_stats() if storage else {}
     return jsonify(stats)
+
+
+@app.route('/api/recordings')
+@require_auth
+def api_recordings():
+    return jsonify(storage.list_recordings() if storage else [])
 
 
 # ── Startup ───────────────────────────────────────────────────────────
