@@ -6,7 +6,7 @@ Run: python verify_install.py
 import os
 import sys
 
-BASE_DIR = os.path.expanduser('~/security_camera')
+from config import BASE_DIR
 PASS = "✅"
 FAIL = "❌"
 WARN = "⚠️ "

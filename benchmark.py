@@ -12,7 +12,7 @@ import subprocess
 import cv2
 import numpy as np
 
-BASE_DIR = os.path.expanduser('~/security_camera')
+from config import BASE_DIR
 
 
 def get_cpu_usage():

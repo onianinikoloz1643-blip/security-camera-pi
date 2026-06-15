@@ -21,8 +21,8 @@ CONSECUTIVE_FRAMES_REQUIRED = 2  # Require N consecutive frames per label
 RECORDING_COOLDOWN  = 10    # Seconds to keep recording after last detection
 SNAPSHOT_INTERVAL   = 3     # Min seconds between snapshots
 
-# ── Detection diagnostics (TEMPORARY — turn off before the stability run) ──
-DETECTION_DEBUG       = True   # Log raw model scores before threshold + consecutive filters
+# ── Detection diagnostics ─────────────────────────────────────────────
+DETECTION_DEBUG       = False  # Log raw model scores before threshold + consecutive filters
 DETECTION_DEBUG_FLOOR = 0.20   # Min raw score worth logging (keep below DETECTION_THRESHOLD)
 
 # ── Motion filter ─────────────────────────────────────────────────────
@@ -44,10 +44,10 @@ SSL_ENABLED = True
 SSL_CERT    = os.path.join(BASE_DIR, 'ssl', 'cert.pem')
 SSL_KEY     = os.path.join(BASE_DIR, 'ssl', 'key.pem')
 
-# ── Telegram ──────────────────────────────────────────────────────────
-TELEGRAM_ENABLED            = False
-TELEGRAM_BOT_TOKEN          = ''
-TELEGRAM_CHAT_ID            = ''
+# ── Telegram (secrets come from environment — never commit real values) ──
+TELEGRAM_ENABLED            = os.getenv('TELEGRAM_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+TELEGRAM_BOT_TOKEN          = os.getenv('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID            = os.getenv('TELEGRAM_CHAT_ID', '')
 TELEGRAM_COOLDOWN           = 30   # Seconds between alerts
 TELEGRAM_COOLDOWN_PER_LABEL = 60   # Seconds between alerts for same label
 
