@@ -65,6 +65,9 @@ HTML_TEMPLATE = '''
     .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
     .card-info{padding:8px 12px;font-size:.78em;color:#888}
     .card-info .label{color:#fff;font-weight:bold;text-transform:capitalize}
+    .card-info a{color:#4a9eff;text-decoration:none;font-size:.85em}
+    .rec-noimg{width:100%;aspect-ratio:16/9;display:flex;align-items:center;
+               justify-content:center;background:#222;font-size:2em}
     .new-badge{background:#4caf50;color:#000;font-size:.7em;
                padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:bold}
 
@@ -128,17 +131,7 @@ HTML_TEMPLATE = '''
 </div>
 
 <h2>ჩანაწერები</h2>
-<div id="rec-container">
-{% if recordings %}
-<ul class="rec-list" id="rec-list">
-  {% for rec in recordings[:20] %}
-  <li><span>{{ rec }}</span><a href="/recordings/{{ rec }}" download>⬇ გადმოწერა</a></li>
-  {% endfor %}
-</ul>
-{% else %}
-<p class="empty">ჩანაწერები ჯერ არ არის.</p>
-{% endif %}
-</div>
+<div id="rec-container" class="grid"><p class="empty">იტვირთება…</p></div>
 
 <script>
 const toast = document.getElementById('toast');
@@ -155,6 +148,9 @@ function openLightbox(src) {
 }
 
 document.getElementById('snap-grid').addEventListener('click', e => {
+  if (e.target.tagName === 'IMG') openLightbox(e.target.src);
+});
+document.getElementById('rec-container').addEventListener('click', e => {
   if (e.target.tagName === 'IMG') openLightbox(e.target.src);
 });
 
@@ -228,6 +224,7 @@ evtSource.addEventListener('snapshot', e => {
 
 evtSource.addEventListener('recording_start', e => {
   showToast('🔴 ჩაწერა დაიწყო');
+  refreshRecordings();
 });
 
 evtSource.addEventListener('recording_stop', e => {
@@ -237,19 +234,30 @@ evtSource.addEventListener('recording_stop', e => {
   refreshRecordings();
 });
 
+function renderRecordings(list) {
+  const c = document.getElementById('rec-container');
+  if (!c) return;
+  if (!list.length) {
+    c.innerHTML = '<p class="empty">ჩანაწერები ჯერ არ არის.</p>';
+    return;
+  }
+  c.innerHTML = list.slice(0, 24).map(rec => {
+    const ts = rec.file.split('_').slice(0, 2).join('_');
+    const d = ts.slice(0, 8), t = ts.slice(9, 15);
+    const date = d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
+    const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
+    const thumb = rec.thumb
+      ? '<img src="/snapshots/'+rec.thumb+'" loading="lazy" alt="">'
+      : '<div class="rec-noimg">🎬</div>';
+    return '<div class="card">'+thumb+
+      '<div class="card-info"><span class="label">'+date+' '+time+'</span>'+
+      '<div><a href="/recordings/'+rec.file+'" download>⬇ ჩამოტვირთვა</a></div>'+
+      '</div></div>';
+  }).join('');
+}
+
 function refreshRecordings() {
-  fetch('/api/recordings').then(r => r.json()).then(list => {
-    const c = document.getElementById('rec-container');
-    if (!c) return;
-    if (!list.length) {
-      c.innerHTML = '<p class="empty">ჩანაწერები ჯერ არ არის.</p>';
-      return;
-    }
-    const items = list.slice(0, 20).map(rec =>
-      `<li><span>${rec}</span><a href="/recordings/${rec}" download>⬇ გადმოწერა</a></li>`
-    ).join('');
-    c.innerHTML = `<ul class="rec-list" id="rec-list">${items}</ul>`;
-  }).catch(() => {});
+  fetch('/api/recordings').then(r => r.json()).then(renderRecordings).catch(() => {});
 }
 
 evtSource.addEventListener('disk', e => {
@@ -264,6 +272,8 @@ evtSource.addEventListener('disk', e => {
 evtSource.onerror = () => {
   console.warn('SSE connection lost — retrying...');
 };
+
+refreshRecordings();
 </script>
 </body>
 </html>
@@ -338,7 +348,7 @@ def api_status():
 @app.route('/api/recordings')
 @require_auth
 def api_recordings():
-    return jsonify(storage.list_recordings() if storage else [])
+    return jsonify(storage.list_recordings_with_thumbs() if storage else [])
 
 
 # ── Startup ───────────────────────────────────────────────────────────

@@ -185,6 +185,19 @@ class StorageManager:
         ]
         return sorted(files, reverse=True)
 
+    def list_recordings_with_thumbs(self):
+        """Recordings newest-first, each paired with the event snapshot that
+        shares its timestamp prefix (YYYYMMDD_HHMMSS) for use as a thumbnail."""
+        snap_by_ts = {}
+        for s in self.list_snapshots():
+            ts = '_'.join(s.split('_')[:2])
+            snap_by_ts.setdefault(ts, s)
+        result = []
+        for rec in self.list_recordings():
+            ts = '_'.join(rec.split('_')[:2])
+            result.append({'file': rec, 'thumb': snap_by_ts.get(ts)})
+        return result
+
     def get_stats(self):
         """Return system stats for web interface and Telegram bot."""
         usage    = shutil.disk_usage(BASE_DIR)
