@@ -25,6 +25,10 @@ __pycache__/
 *.pyo
 *.pyd
 
+# IDE
+.idea/
+.vscode/
+
 # OS files
 .DS_Store
 Thumbs.db
