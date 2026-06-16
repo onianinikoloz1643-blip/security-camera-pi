@@ -46,8 +46,8 @@ The main loop in `main.py` runs this pipeline per frame:
 4. **Event handling** — on the first confirmed detection it saves one annotated snapshot, sends a
    Telegram alert, and starts recording. Recording continues until there have been no detections
    for a cooldown period.
-5. **Storage** — `storage.py` writes snapshots (JPEG) and clips (AVI), and deletes the oldest
-   files once the disk passes 90%.
+5. **Storage** — `storage.py` writes snapshots (JPEG) and clips (AVI, then converted to MP4 with
+   ffmpeg in the background), and deletes the oldest files once the disk passes 90%.
 
 The web server in `web.py` runs in a background thread and pushes live updates to the browser
 using Server-Sent Events.
@@ -109,7 +109,7 @@ source venv/bin/activate
 
 ### 3. Dependencies
 ```bash
-sudo apt install -y python3-picamera2 python3-opencv
+sudo apt install -y python3-picamera2 python3-opencv ffmpeg
 pip install ai-edge-litert flask numpy requests
 ```
 

@@ -240,8 +240,10 @@ snapshot, sends a Telegram alert, and starts recording. Recording continues unti
 been no detections for `RECORDING_COOLDOWN` seconds (default 10), then the clip is finalized.
 Long events are split into separate files every five minutes.
 
-Snapshots are JPEG; recordings are AVI written with OpenCV's `VideoWriter`. Each snapshot and
-clip share a timestamp, which the web interface uses to pair a clip with its snapshot as a
+Snapshots are JPEG; recordings are written as AVI with OpenCV's `VideoWriter`, then converted to
+H.264 MP4 with ffmpeg in a background thread (the AVI is kept if ffmpeg is unavailable). Each
+snapshot and clip share a timestamp, which the web interface uses to pair a clip with its snapshot
+as a
 thumbnail. When disk usage passes 90%, the oldest snapshots and recordings are deleted until
 usage drops below 85%; a file currently being recorded is never deleted.
 
@@ -301,7 +303,7 @@ All endpoints require HTTP basic auth and are served over HTTPS on port 8080.
 | GET | `/api/status` | System statistics. | JSON |
 | GET | `/api/recordings` | Recordings with paired snapshot thumbnails. | JSON |
 | GET | `/snapshots/<filename>` | Serve a snapshot image. | `image/jpeg` |
-| GET | `/recordings/<filename>` | Serve / download a recording. | `video/x-msvideo` |
+| GET | `/recordings/<filename>` | Serve / play / download a recording. | `video/mp4` |
 
 `GET /api/status` returns:
 
@@ -319,7 +321,7 @@ All endpoints require HTTP basic auth and are served over HTTPS on port 8080.
 
 ```json
 [
-  { "file": "20260615_210101_recording.avi", "thumb": "20260615_210101_person.jpg" }
+  { "file": "20260615_210101_recording.mp4", "thumb": "20260615_210101_person.jpg" }
 ]
 ```
 
@@ -354,8 +356,8 @@ Tested on Raspberry Pi OS 64-bit (Bookworm) on a Raspberry Pi 5.
 
 1. **Clone** into `~/security_camera` and create a virtual environment with
    `--system-site-packages` (so the system Picamera2 and OpenCV are available).
-2. **Install** `python3-picamera2` and `python3-opencv` with apt, and `ai-edge-litert`,
-   `flask`, `numpy`, `requests` with pip.
+2. **Install** `python3-picamera2`, `python3-opencv`, and `ffmpeg` with apt, and
+   `ai-edge-litert`, `flask`, `numpy`, `requests` with pip.
 3. **Download** the model to `models/detect.tflite`
    (`efficientdet_lite0_uint8.tflite` from the MediaPipe model storage).
 4. **Enable the camera** in `/boot/firmware/config.txt`
@@ -452,8 +454,6 @@ below its ~80 °C throttle point, so sustained operation does not throttle the C
   below the threshold for distant or poorly-lit subjects. The threshold is deliberately not
   lowered to compensate, because that would admit false positives and raise the sustained CPU
   and thermal load. A larger model or a Hailo/Coral accelerator would extend the usable range.
-- **Recordings are AVI.** They download rather than play in the browser. Transcoding to MP4
-  would allow in-browser playback.
 - **Single camera, local network.** The dashboard is intended for the local network behind a
   self-signed certificate, not exposure to the public internet.
 
