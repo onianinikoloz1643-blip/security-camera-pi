@@ -63,10 +63,14 @@ HTML_TEMPLATE = '''
     .card{background:#1a1a1a;border-radius:8px;overflow:hidden;transition:transform .2s}
     .card:hover{transform:scale(1.02)}
     .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
-    .card video{width:100%;display:block;aspect-ratio:16/9;background:#000}
-    /* No audio in recordings — hide the volume/mute control (Chromium/WebKit) */
-    video::-webkit-media-controls-mute-button,
-    video::-webkit-media-controls-volume-control-container{display:none}
+    .player{background:#000}
+    .player video{width:100%;display:block;aspect-ratio:16/9;background:#000}
+    .vbar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#111}
+    .vbtn{background:none;border:none;color:#ddd;cursor:pointer;padding:2px;display:flex;align-items:center}
+    .vbtn:hover{color:#fff}
+    .vbtn svg{width:18px;height:18px;fill:currentColor}
+    .vseek{flex:1;min-width:30px;accent-color:#4a9eff;cursor:pointer}
+    .vtime{color:#aaa;font-size:.72em;white-space:nowrap}
     .card-info{padding:8px 12px;font-size:.78em;color:#888}
     .card-info .label{color:#fff;font-weight:bold;text-transform:capitalize}
     .card-info a{color:#4a9eff;text-decoration:none;font-size:.85em}
@@ -275,6 +279,45 @@ evtSource.addEventListener('recording_stop', e => {
   refreshRecordings();
 });
 
+const SVG_PLAY  = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+const SVG_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+const SVG_BACK  = '<svg viewBox="0 0 24 24"><path d="M11 7L5 12l6 5V7zm7 0l-6 5 6 5V7z"/></svg>';
+const SVG_FWD   = '<svg viewBox="0 0 24 24"><path d="M13 7l6 5-6 5V7zM6 7l6 5-6 5V7z"/></svg>';
+const SVG_FULL  = '<svg viewBox="0 0 24 24"><path d="M7 7h4V5H5v6h2V7zm10 0v4h2V5h-6v2h4zM7 17v-4H5v6h6v-2H7zm10 0h-4v2h6v-6h-2v4z"/></svg>';
+
+function fmtTime(s) {
+  s = Math.floor(s || 0);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// Wire the custom controls for each freshly-rendered recording player.
+function wirePlayers() {
+  document.querySelectorAll('#rec-container .player').forEach(p => {
+    const v = p.querySelector('video');
+    const seek = p.querySelector('.vseek');
+    const time = p.querySelector('.vtime');
+    const playBtn = p.querySelector('[data-act="play"]');
+    p.querySelectorAll('.vbtn').forEach(b => b.addEventListener('click', () => {
+      const a = b.dataset.act;
+      if (a === 'play') { v.paused ? v.play() : v.pause(); }
+      else if (a === 'back') { v.currentTime = Math.max(0, v.currentTime - 10); }
+      else if (a === 'fwd')  { v.currentTime = Math.min(v.duration || 0, v.currentTime + 10); }
+      else if (a === 'full' && v.requestFullscreen) { v.requestFullscreen(); }
+    }));
+    v.addEventListener('play',  () => { playBtn.innerHTML = SVG_PAUSE; });
+    v.addEventListener('pause', () => { playBtn.innerHTML = SVG_PLAY; });
+    v.addEventListener('timeupdate', () => {
+      if (v.duration) {
+        seek.value = (v.currentTime / v.duration) * 1000;
+        time.textContent = fmtTime(v.currentTime) + ' / ' + fmtTime(v.duration);
+      }
+    });
+    seek.addEventListener('input', () => {
+      if (v.duration) v.currentTime = (seek.value / 1000) * v.duration;
+    });
+  });
+}
+
 function renderRecordings(list) {
   const c = document.getElementById('rec-container');
   if (!c) return;
@@ -289,7 +332,15 @@ function renderRecordings(list) {
     const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
     const poster = rec.thumb ? ' poster="/snapshots/'+rec.thumb+'"' : '';
     const media = rec.file.endsWith('.mp4')
-      ? '<video controls controlsList="nodownload noremoteplayback" preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
+      ? '<div class="player"><video preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
+        + '<div class="vbar">'
+        +   '<button class="vbtn" data-act="play" title="Play/pause">'+SVG_PLAY+'</button>'
+        +   '<button class="vbtn" data-act="back" title="Back 10s">'+SVG_BACK+'</button>'
+        +   '<button class="vbtn" data-act="fwd" title="Forward 10s">'+SVG_FWD+'</button>'
+        +   '<input type="range" class="vseek" min="0" max="1000" value="0">'
+        +   '<span class="vtime">0:00</span>'
+        +   '<button class="vbtn" data-act="full" title="Fullscreen">'+SVG_FULL+'</button>'
+        + '</div></div>'
       : (rec.thumb
           ? '<img src="/snapshots/'+rec.thumb+'" loading="lazy" alt="">'
           : '<div class="rec-noimg">no preview</div>');
@@ -298,6 +349,7 @@ function renderRecordings(list) {
       '<div><a href="/recordings/'+rec.file+'" download>Download</a></div>'+
       '</div></div>';
   }).join('');
+  wirePlayers();
 }
 
 function refreshRecordings() {
