@@ -186,7 +186,8 @@ class StorageManager:
             result = subprocess.run(
                 ['ffmpeg', '-y', '-i', avi_path,
                  '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-                 '-threads', '2', '-movflags', '+faststart', tmp_path],
+                 '-threads', '2', '-movflags', '+faststart',
+                 '-f', 'mp4', tmp_path],
                 capture_output=True, timeout=600
             )
             if result.returncode == 0 and os.path.exists(tmp_path):
@@ -194,9 +195,10 @@ class StorageManager:
                 os.remove(avi_path)
                 logger.info(f"Converted to MP4: {os.path.basename(mp4_path)}")
             else:
+                err = (result.stderr or b'').decode('utf-8', 'replace').strip()[-300:]
                 logger.warning(
                     f"MP4 conversion failed for {os.path.basename(avi_path)} "
-                    f"— keeping AVI"
+                    f"— keeping AVI. ffmpeg: {err}"
                 )
                 self._remove_quiet(tmp_path)
         except FileNotFoundError:
