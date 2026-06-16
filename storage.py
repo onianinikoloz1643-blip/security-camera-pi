@@ -61,6 +61,11 @@ class StorageManager:
     def _timestamp(self):
         return datetime.now().strftime('%Y%m%d_%H%M%S')
 
+    def timestamp(self):
+        """Public timestamp (YYYYMMDD_HHMMSS) so one event can share it
+        between its snapshot and its recording."""
+        return self._timestamp()
+
     # ── Disk management ───────────────────────────────────────────────
 
     def get_disk_usage_percent(self):
@@ -104,11 +109,12 @@ class StorageManager:
 
     # ── Snapshots ─────────────────────────────────────────────────────
 
-    def save_snapshot(self, frame, detections):
+    def save_snapshot(self, frame, detections, timestamp=None):
         """Save annotated snapshot with detection labels in filename."""
         self.cleanup_old_files()
+        ts       = timestamp or self._timestamp()
         labels   = '_'.join(sorted(set(d['label'] for d in detections)))
-        filename = f"{self._timestamp()}_{labels}.jpg"
+        filename = f"{ts}_{labels}.jpg"
         filepath = os.path.join(self.snapshots_dir, filename)
         saved = cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
         if not saved:
@@ -118,10 +124,11 @@ class StorageManager:
 
     # ── Recordings ────────────────────────────────────────────────────
 
-    def start_recording(self, frame_width, frame_height, fps=10):
+    def start_recording(self, frame_width, frame_height, fps=10, timestamp=None):
         """Start a new video recording. Returns (writer, filepath, start_time)."""
         self.cleanup_old_files()
-        filename  = f"{self._timestamp()}_recording.avi"
+        ts        = timestamp or self._timestamp()
+        filename  = f"{ts}_recording.avi"
         filepath  = os.path.join(self.recordings_dir, filename)
         fourcc    = cv2.VideoWriter_fourcc(*'XVID')
         writer    = cv2.VideoWriter(

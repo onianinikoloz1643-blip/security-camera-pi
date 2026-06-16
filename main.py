@@ -77,21 +77,26 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                 push_event('detection', {'labels': list(set(labels))})
 
                 # New event: person appeared after an idle gap. Save ONE
-                # snapshot + send ONE alert + start the clip — instead of a
-                # fresh snapshot every few seconds.
+                # snapshot and start the clip with a SHARED timestamp (so the
+                # clip pairs with its snapshot), then send ONE alert.
                 if not camera.is_recording:
                     annotated = camera.draw_detections(frame.copy(), detections)
+                    event_ts  = storage.timestamp()
 
-                    filepath = storage.save_snapshot(annotated, detections)
+                    filepath = storage.save_snapshot(
+                        annotated, detections, timestamp=event_ts
+                    )
                     push_event('snapshot', {
                         'filename': os.path.basename(filepath),
                         'total':    len(storage.list_snapshots())
                     })
 
-                    notifier.send_detection(annotated, detections)
-
-                    camera.start_recording(storage)
+                    camera.start_recording(storage, timestamp=event_ts)
                     push_event('recording_start', {})
+
+                    # Sent last: the Telegram POST can block, and we don't want
+                    # it to delay the snapshot or the start of the recording.
+                    notifier.send_detection(annotated, detections)
 
                 last_detection_time = now
 

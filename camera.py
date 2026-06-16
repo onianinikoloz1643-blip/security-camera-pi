@@ -110,11 +110,11 @@ class Camera:
             )
         return frame
 
-    def start_recording(self, storage):
+    def start_recording(self, storage, timestamp=None):
         """Begin video recording via storage manager."""
         if not self._is_recording:
             self._recording_writer, self._recording_path, self._recording_start = \
-                storage.start_recording(self.width, self.height, self.fps)
+                storage.start_recording(self.width, self.height, self.fps, timestamp=timestamp)
             self._is_recording = True
 
     def write_frame(self, frame, storage=None):

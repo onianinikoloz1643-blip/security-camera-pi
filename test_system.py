@@ -74,17 +74,20 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
                 if not camera.is_recording:
                     annotated = camera.draw_detections(frame.copy(), detections)
+                    event_ts  = storage.timestamp()
 
-                    filepath = storage.save_snapshot(annotated, detections)
+                    filepath = storage.save_snapshot(
+                        annotated, detections, timestamp=event_ts
+                    )
                     push_event('snapshot', {
                         'filename': os.path.basename(filepath),
                         'total':    len(storage.list_snapshots())
                     })
 
-                    notifier.send_detection(annotated, detections)
-
-                    camera.start_recording(storage)
+                    camera.start_recording(storage, timestamp=event_ts)
                     push_event('recording_start', {})
+
+                    notifier.send_detection(annotated, detections)
 
                 last_detection_time = now
 

@@ -90,6 +90,14 @@ HTML_TEMPLATE = '''
     #lightbox img{max-width:95%;max-height:95%;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,.8);
                   cursor:grab}
     #lightbox img:active{cursor:grabbing}
+
+    @media (max-width: 600px) {
+      body{padding:12px}
+      h1{font-size:1.3em}
+      .statusbar{gap:10px}
+      .stat{padding:8px 12px;font-size:.78em}
+      .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+    }
   </style>
 </head>
 <body>
