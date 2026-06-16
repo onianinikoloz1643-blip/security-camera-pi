@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_camera_loop(camera, detector, motion, storage, notifier, bot):
-    last_detection_time = 0
-    last_disk_update    = 0
+    last_activity_time = 0
+    last_disk_update   = 0
 
     logger.info("Test loop started — using MockCamera")
 
@@ -56,6 +56,9 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
             detections = detector.detect(frame) if motion_detected else []
 
+            if motion_detected or detections:
+                last_activity_time = now
+
             if detections:
                 labels = [d['label'] for d in detections]
                 scores = [d['score'] for d in detections]
@@ -82,9 +85,7 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
                     notifier.send_detection(annotated, detections)
 
-                last_detection_time = now
-
-            elif camera.is_recording and now - last_detection_time >= RECORDING_COOLDOWN:
+            if camera.is_recording and now - last_activity_time >= RECORDING_COOLDOWN:
                 camera.stop_recording(storage)
                 push_event('recording_stop', {
                     'total': len(storage.list_recordings())

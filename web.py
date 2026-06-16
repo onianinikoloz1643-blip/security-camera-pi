@@ -65,6 +65,8 @@ HTML_TEMPLATE = '''
     .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
     .player{background:#000}
     .player video{width:100%;display:block;aspect-ratio:16/9;background:#000}
+    .player:fullscreen,.player:-webkit-full-screen{display:flex;flex-direction:column;justify-content:center}
+    .player:fullscreen video,.player:-webkit-full-screen video{flex:1;min-height:0;aspect-ratio:auto;object-fit:contain}
     .vbar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#111}
     .vbtn{background:none;border:none;color:#ddd;cursor:pointer;padding:2px;display:flex;align-items:center}
     .vbtn:hover{color:#fff}
@@ -302,7 +304,7 @@ function wirePlayers() {
       if (a === 'play') { v.paused ? v.play() : v.pause(); }
       else if (a === 'back') { v.currentTime = Math.max(0, v.currentTime - 10); }
       else if (a === 'fwd')  { v.currentTime = Math.min(v.duration || 0, v.currentTime + 10); }
-      else if (a === 'full' && v.requestFullscreen) { v.requestFullscreen(); }
+      else if (a === 'full') { (p.requestFullscreen || p.webkitRequestFullscreen).call(p); }
     }));
     v.addEventListener('play',  () => { playBtn.innerHTML = SVG_PAUSE; });
     v.addEventListener('pause', () => { playBtn.innerHTML = SVG_PLAY; });

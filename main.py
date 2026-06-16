@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 def run_camera_loop(camera, detector, motion, storage, notifier, bot):
     """Main loop: capture → motion → detect → store."""
 
-    last_detection_time = 0
-    last_disk_update    = 0
+    last_activity_time = 0
+    last_disk_update   = 0
 
     logger.info("Camera loop started")
 
@@ -49,9 +49,12 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
             if MOTION_ENABLED:
                 motion_detected, _ = motion.detect(frame)
 
-            # Only run inference on moving frames; a still frame counts as
-            # "no detection" so the recording cooldown below still ticks.
             detections = detector.detect(frame) if motion_detected else []
+
+            # keep a recording alive while anything moves, so a clip runs until
+            # the object stops/leaves, not just until the detector last saw it
+            if motion_detected or detections:
+                last_activity_time = now
 
             if detections:
                 labels = [d['label'] for d in detections]
@@ -60,13 +63,9 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                     f"Detected: "
                     f"{list(zip(labels, [f'{s:.0%}' for s in scores]))}"
                 )
-
-                # SSE detection event (live toast, every frame)
                 push_event('detection', {'labels': list(set(labels))})
 
-                # New event: person appeared after an idle gap. Save ONE
-                # snapshot and start the clip with a SHARED timestamp (so the
-                # clip pairs with its snapshot), then send ONE alert.
+                # new object in view: one snapshot + one alert + start the clip
                 if not camera.is_recording:
                     annotated = camera.draw_detections(frame.copy(), detections)
                     event_ts  = storage.timestamp()
@@ -82,16 +81,11 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                     camera.start_recording(storage, timestamp=event_ts)
                     push_event('recording_start', {})
 
-                    # Sent last: the Telegram POST can block, and we don't want
-                    # it to delay the snapshot or the start of the recording.
+                    # send last, the Telegram upload can block for a moment
                     notifier.send_detection(annotated, detections)
 
-                last_detection_time = now
-
-            # End the event once the cooldown passes with no detections. Runs
-            # every frame — including still ones — so a recording always stops
-            # and the next appearance starts a fresh event.
-            elif camera.is_recording and now - last_detection_time >= RECORDING_COOLDOWN:
+            # stop once nothing has moved for the cooldown
+            if camera.is_recording and now - last_activity_time >= RECORDING_COOLDOWN:
                 camera.stop_recording(storage)
                 push_event('recording_stop', {
                     'total': len(storage.list_recordings())
