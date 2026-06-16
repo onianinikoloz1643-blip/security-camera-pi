@@ -201,6 +201,7 @@ When enabled, the bot sends an alert with a photo on detection and responds to:
 |---|---|
 | `/status` | Uptime, counts, disk, recording state |
 | `/snapshot` | Send the latest snapshot |
+| `/video` | Send the latest recording (under 50 MB) |
 | `/disk` | Disk usage |
 | `/stop` | Pause detection |
 | `/start` | Resume detection |

@@ -341,6 +341,7 @@ The `/stream` endpoint emits these event types:
 |---------|--------|
 | `/status` | Uptime, snapshot/recording counts, disk usage, recording state. |
 | `/snapshot` | Send the most recent snapshot. |
+| `/video` | Send the most recent finished recording (under Telegram's 50 MB limit). |
 | `/disk` | Disk usage. |
 | `/stop` | Pause detection. |
 | `/start` | Resume detection. |

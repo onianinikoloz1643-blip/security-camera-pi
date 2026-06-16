@@ -16,6 +16,7 @@ COMMANDS = """
 
 /status - system status
 /snapshot - latest snapshot
+/video - latest recording
 /disk - disk usage
 /stop - pause detection
 /start - resume detection
@@ -121,6 +122,7 @@ class TelegramBot:
             '/stop':     self._cmd_stop,
             '/status':   self._cmd_status,
             '/snapshot': self._cmd_snapshot,
+            '/video':    self._cmd_video,
             '/disk':     self._cmd_disk,
             '/help':     self._cmd_help,
             '/password': self._cmd_password,
@@ -192,6 +194,51 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Snapshot send error: {e}")
             self._send(f"Could not send snapshot: {e}")
+
+    def _cmd_video(self):
+        """Send the most recent finished recording as a downloadable file."""
+        recordings = self.storage.list_recordings()
+        if not recordings:
+            self._send("No recordings yet.")
+            return
+
+        # The newest file may still be recording; skip it for a complete clip.
+        if self.camera.is_recording:
+            if len(recordings) < 2:
+                self._send("A recording is in progress — try again in a moment.")
+                return
+            latest = recordings[1]
+        else:
+            latest = recordings[0]
+
+        filepath = os.path.join(self.storage.recordings_dir, latest)
+        try:
+            size_mb = os.path.getsize(filepath) / (1024 ** 2)
+        except OSError:
+            self._send("Could not read the recording file.")
+            return
+
+        if size_mb > 50:
+            self._send(
+                f"Latest clip is {size_mb:.0f} MB, over Telegram's 50 MB limit "
+                f"for bots. Download it from the web dashboard instead."
+            )
+            return
+
+        try:
+            with open(filepath, 'rb') as f:
+                data = f.read()
+            url = f"https://api.telegram.org/bot{self.token}/sendDocument"
+            requests.post(
+                url,
+                data={'chat_id': self.chat_id, 'caption': latest},
+                files={'document': (latest, data, 'video/x-msvideo')},
+                timeout=180
+            )
+            logger.info(f"Recording sent via Telegram: {latest}")
+        except Exception as e:
+            logger.error(f"Video send error: {e}")
+            self._send(f"Could not send recording: {e}")
 
     def _cmd_disk(self):
         stats       = self.storage.get_stats()
