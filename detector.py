@@ -69,8 +69,7 @@ class ObjectDetector:
                 'box':   boxes[i].tolist()
             })
 
-        # Diagnostic: show what the model saw BEFORE the threshold filter, so we
-        # can tell whether a missed person was never detected or just scored low.
+        # log raw scores before the threshold (handy for tuning)
         if DETECTION_DEBUG and debug_candidates:
             passed = [f"{l} {s:.2f}" for l, s in debug_candidates if s >= self.threshold]
             below  = [f"{l} {s:.2f}" for l, s in debug_candidates if s < self.threshold]
@@ -96,7 +95,7 @@ class ObjectDetector:
             if streak >= self.consecutive_required
         }
 
-        # Diagnostic: show detections held back by the consecutive-frames filter.
+        # show what the consecutive-frames filter is holding back
         if DETECTION_DEBUG:
             pending = {
                 l: self._label_streaks[l]

@@ -64,8 +64,7 @@ class StorageManager:
         return datetime.now().strftime('%Y%m%d_%H%M%S')
 
     def timestamp(self):
-        """Public timestamp (YYYYMMDD_HHMMSS) so one event can share it
-        between its snapshot and its recording."""
+        """Timestamp shared by an event's snapshot and its recording."""
         return self._timestamp()
 
     # ── Disk management ───────────────────────────────────────────────
@@ -165,8 +164,7 @@ class StorageManager:
                 f"Recording stopped: {os.path.basename(filepath)} "
                 f"({size_mb:.1f} MB)"
             )
-            # Convert to MP4 in the background so it plays in the browser and
-            # in Telegram. Keeps the AVI if ffmpeg is missing or the run fails.
+            # convert to mp4 in the background, keep the avi if it fails
             threading.Thread(
                 target=self._transcode_to_mp4,
                 args=(filepath,),
@@ -178,8 +176,7 @@ class StorageManager:
             )
 
     def _transcode_to_mp4(self, avi_path):
-        """Convert a finished AVI clip to H.264 MP4, then delete the AVI.
-        On any failure (including ffmpeg not installed) the AVI is kept."""
+        """Convert the avi clip to mp4 and delete the avi. Keep the avi if it fails."""
         mp4_path = os.path.splitext(avi_path)[0] + '.mp4'
         tmp_path = mp4_path + '.tmp'
         try:
@@ -249,8 +246,7 @@ class StorageManager:
         return sorted(files, reverse=True)
 
     def list_recordings_with_thumbs(self):
-        """Recordings newest-first, each paired with the event snapshot that
-        shares its timestamp prefix (YYYYMMDD_HHMMSS) for use as a thumbnail."""
+        """Recordings paired with the snapshot of the same timestamp (thumbnail)."""
         snap_by_ts = {}
         for s in self.list_snapshots():
             ts = '_'.join(s.split('_')[:2])

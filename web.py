@@ -179,7 +179,7 @@ document.getElementById('rec-container').addEventListener('click', e => {
   if (e.target.tagName === 'IMG') openLightbox(e.target.src);
 });
 
-// Double-tap the left/right half of a playing clip to skip 10s back/forward.
+// double-tap left/right half to skip 10s
 document.getElementById('rec-container').addEventListener('dblclick', e => {
   const v = e.target;
   if (v.tagName !== 'VIDEO' || !v.duration) return;
@@ -292,7 +292,7 @@ function fmtTime(s) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
-// Wire the custom controls for each freshly-rendered recording player.
+// hook up the custom controls after each render
 function wirePlayers() {
   document.querySelectorAll('#rec-container .player').forEach(p => {
     const v = p.querySelector('video');
@@ -392,7 +392,7 @@ def index():
         recordings=recordings,
         stats=stats
     ))
-    # Never cache the dashboard HTML, so UI changes always load.
+    # don't cache the page so UI changes always show up
     resp.headers['Cache-Control'] = 'no-store'
     return resp
 

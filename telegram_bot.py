@@ -196,13 +196,13 @@ class TelegramBot:
             self._send(f"Could not send snapshot: {e}")
 
     def _cmd_video(self):
-        """Send the most recent finished recording as a downloadable file."""
+        """Send the latest finished recording."""
         recordings = self.storage.list_recordings()
         if not recordings:
             self._send("No recordings yet.")
             return
 
-        # The newest file may still be recording; skip it for a complete clip.
+        # newest file might still be recording, skip it
         if self.camera.is_recording:
             if len(recordings) < 2:
                 self._send("A recording is in progress — try again in a moment.")
@@ -225,8 +225,7 @@ class TelegramBot:
             )
             return
 
-        # Send the matching event snapshot first (it shares the clip's
-        # timestamp), so the image arrives together with its footage.
+        # send the matching snapshot too (same timestamp as the clip)
         ts_prefix = '_'.join(latest.split('_')[:2])
         thumb = next(
             (s for s in self.storage.list_snapshots() if s.startswith(ts_prefix)),

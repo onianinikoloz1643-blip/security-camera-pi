@@ -12,8 +12,8 @@ LABEL_PATH  = os.path.join(BASE_DIR, 'models', 'labelmap.txt')
 FRAME_WIDTH  = 1280
 FRAME_HEIGHT = 720
 FPS          = 10
-CAMERA_HFLIP = True   # Horizontal flip — pair with VFLIP for a 180°-mounted camera
-CAMERA_VFLIP = True   # Vertical flip — corrects an upside-down image
+CAMERA_HFLIP = True   # flip horizontally (camera is mounted upside down)
+CAMERA_VFLIP = True   # flip vertically
 
 # ── Detection ─────────────────────────────────────────────────────────
 DETECTION_THRESHOLD = 0.4   # Min confidence for detection (0.0-1.0)
@@ -22,8 +22,8 @@ RECORDING_COOLDOWN  = 10    # Seconds to keep recording after last detection
 SNAPSHOT_INTERVAL   = 3     # Min seconds between snapshots
 
 # ── Detection diagnostics ─────────────────────────────────────────────
-DETECTION_DEBUG       = False  # Log raw model scores before threshold + consecutive filters
-DETECTION_DEBUG_FLOOR = 0.20   # Min raw score worth logging (keep below DETECTION_THRESHOLD)
+DETECTION_DEBUG       = False  # log raw scores before filtering (for tuning)
+DETECTION_DEBUG_FLOOR = 0.20   # min score worth logging
 
 # ── Motion filter ─────────────────────────────────────────────────────
 MOTION_ENABLED   = True
@@ -44,7 +44,7 @@ SSL_ENABLED = True
 SSL_CERT    = os.path.join(BASE_DIR, 'ssl', 'cert.pem')
 SSL_KEY     = os.path.join(BASE_DIR, 'ssl', 'key.pem')
 
-# ── Telegram (secrets come from environment — never commit real values) ──
+# ── Telegram (token/chat id from env vars, not committed) ────────────
 TELEGRAM_ENABLED            = os.getenv('TELEGRAM_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
 TELEGRAM_BOT_TOKEN          = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID            = os.getenv('TELEGRAM_CHAT_ID', '')
