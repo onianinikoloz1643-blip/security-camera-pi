@@ -28,7 +28,7 @@ def _load_credentials():
         # so the plaintext password is never written to disk
         print(
             f"\n{'='*50}\n"
-            f"⚠️  FIRST RUN — default credentials created:\n"
+            f"FIRST RUN — default credentials created:\n"
             f"    username : {DEFAULT_USERNAME}\n"
             f"    password : {DEFAULT_PASSWORD}\n"
             f"    Change immediately with /password in Telegram!\n"
@@ -82,15 +82,15 @@ def is_strong_password(password: str) -> tuple[bool, str]:
       - At least one special character
     """
     if len(password) < 8:
-        return False, "პაროლი მინიმუმ 8 სიმბოლო უნდა იყოს"
+        return False, "Password must be at least 8 characters"
     if not re.search(r'[A-Z]', password):
-        return False, "პაროლი უნდა შეიცავდეს მინიმუმ ერთ დიდ ასოს"
+        return False, "Password must contain at least one uppercase letter"
     if not re.search(r'[a-z]', password):
-        return False, "პაროლი უნდა შეიცავდეს მინიმუმ ერთ პატარა ასოს"
+        return False, "Password must contain at least one lowercase letter"
     if not re.search(r'\d', password):
-        return False, "პაროლი უნდა შეიცავდეს მინიმუმ ერთ ციფრს"
+        return False, "Password must contain at least one digit"
     if not re.search(r'[!@#$%^&*(),.?":{}|<>@_\-]', password):
-        return False, "პაროლი უნდა შეიცავდეს მინიმუმ ერთ სპეციალურ სიმბოლოს (!@#$...)"
+        return False, "Password must contain at least one special character (!@#$...)"
     return True, "OK"
 
 
@@ -104,7 +104,7 @@ def change_password(username: str, new_password: str) -> tuple[bool, str]:
         return False, reason
     _save_credentials(username, new_password)
     logger.info(f"Password changed for user: {username}")
-    return True, "პაროლი წარმატებით შეიცვალა"
+    return True, "Password changed successfully"
 
 
 def require_auth(f):

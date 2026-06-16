@@ -34,11 +34,11 @@ def push_event(event_type, data):
 # ── HTML Template ─────────────────────────────────────────────────────
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
-<html lang="ka">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>უსაფრთხოების კამერა</title>
+  <title>Security Camera</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;background:#0f0f0f;color:#eee;padding:20px}
@@ -67,7 +67,7 @@ HTML_TEMPLATE = '''
     .card-info .label{color:#fff;font-weight:bold;text-transform:capitalize}
     .card-info a{color:#4a9eff;text-decoration:none;font-size:.85em}
     .rec-noimg{width:100%;aspect-ratio:16/9;display:flex;align-items:center;
-               justify-content:center;background:#222;font-size:2em}
+               justify-content:center;background:#222;font-size:.85em;color:#555}
     .new-badge{background:#4caf50;color:#000;font-size:.7em;
                padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:bold}
 
@@ -96,16 +96,16 @@ HTML_TEMPLATE = '''
 <div id="toast"></div>
 <div id="lightbox"><img id="lightbox-img" src="" alt=""></div>
 
-<h1>🎥 უსაფრთხოების კამერა</h1>
-<p class="subtitle">რეალურდროული განახლება Server-Sent Events-ის გამოყენებით</p>
+<h1>Security Camera</h1>
+<p class="subtitle">Live updates via Server-Sent Events</p>
 
 <div class="statusbar">
-  <div class="stat"><span class="dot"></span>სისტემა მუშაობს</div>
-  <div class="stat">სნეფშოტები: <span id="snap-count">{{ stats.snapshots }}</span></div>
-  <div class="stat">ჩანაწერები: <span id="rec-count">{{ stats.recordings }}</span></div>
+  <div class="stat"><span class="dot"></span>System running</div>
+  <div class="stat">Snapshots: <span id="snap-count">{{ stats.snapshots }}</span></div>
+  <div class="stat">Recordings: <span id="rec-count">{{ stats.recordings }}</span></div>
   <div class="stat">
-    დისკი: <span id="disk-pct">{{ stats.disk_percent }}%</span>
-    ({{ stats.disk_used_gb }} / {{ stats.disk_total_gb }} გბ)
+    Disk: <span id="disk-pct">{{ stats.disk_percent }}%</span>
+    ({{ stats.disk_used_gb }} / {{ stats.disk_total_gb }} GB)
     <div class="disk-bar-bg">
       <div class="disk-bar-fill {% if stats.disk_percent > 85 %}danger{% elif stats.disk_percent > 70 %}warn{% endif %}"
            id="disk-bar" style="width:{{ stats.disk_percent }}%"></div>
@@ -113,7 +113,7 @@ HTML_TEMPLATE = '''
   </div>
 </div>
 
-<h2>ბოლო სნეფშოტები</h2>
+<h2>Recent snapshots</h2>
 <div class="grid" id="snap-grid">
   {% if snapshots %}
     {% for snap in snapshots[:12] %}
@@ -127,12 +127,12 @@ HTML_TEMPLATE = '''
     </div>
     {% endfor %}
   {% else %}
-    <p class="empty">სნეფშოტები ჯერ არ არის — პირველი დეტექტირება აქ გამოჩნდება.</p>
+    <p class="empty">No snapshots yet. The first detection will appear here.</p>
   {% endif %}
 </div>
 
-<h2>ჩანაწერები</h2>
-<div id="rec-container" class="grid"><p class="empty">იტვირთება…</p></div>
+<h2>Recordings</h2>
+<div id="rec-container" class="grid"><p class="empty">Loading…</p></div>
 
 <script>
 const toast = document.getElementById('toast');
@@ -231,12 +231,8 @@ const evtSource = new EventSource('/stream');
 
 evtSource.addEventListener('detection', e => {
   const data = JSON.parse(e.data);
-  const labelKa = {
-    person: 'ადამიანი', car: 'მანქანა', truck: 'სატვირთო',
-    bus: 'ავტობუსი', motorcycle: 'მოტოციკლი', bicycle: 'ველოსიპედი'
-  };
-  const labels = data.labels.map(l => labelKa[l] || l).join(', ');
-  showToast(`🚨 დეტექტირება: ${labels}`);
+  const labels = data.labels.join(', ');
+  showToast('Detected: ' + labels);
 });
 
 evtSource.addEventListener('snapshot', e => {
@@ -246,14 +242,14 @@ evtSource.addEventListener('snapshot', e => {
 });
 
 evtSource.addEventListener('recording_start', e => {
-  showToast('🔴 ჩაწერა დაიწყო');
+  showToast('Recording started');
   refreshRecordings();
 });
 
 evtSource.addEventListener('recording_stop', e => {
   const data = JSON.parse(e.data);
   document.getElementById('rec-count').textContent = data.total;
-  showToast('⏹ ჩაწერა დასრულდა');
+  showToast('Recording stopped');
   refreshRecordings();
 });
 
@@ -261,7 +257,7 @@ function renderRecordings(list) {
   const c = document.getElementById('rec-container');
   if (!c) return;
   if (!list.length) {
-    c.innerHTML = '<p class="empty">ჩანაწერები ჯერ არ არის.</p>';
+    c.innerHTML = '<p class="empty">No recordings yet.</p>';
     return;
   }
   c.innerHTML = list.slice(0, 24).map(rec => {
@@ -271,10 +267,10 @@ function renderRecordings(list) {
     const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
     const thumb = rec.thumb
       ? '<img src="/snapshots/'+rec.thumb+'" loading="lazy" alt="">'
-      : '<div class="rec-noimg">🎬</div>';
+      : '<div class="rec-noimg">no preview</div>';
     return '<div class="card">'+thumb+
       '<div class="card-info"><span class="label">'+date+' '+time+'</span>'+
-      '<div><a href="/recordings/'+rec.file+'" download>⬇ ჩამოტვირთვა</a></div>'+
+      '<div><a href="/recordings/'+rec.file+'" download>Download</a></div>'+
       '</div></div>';
   }).join('');
 }

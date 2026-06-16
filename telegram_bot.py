@@ -12,15 +12,15 @@ from config import (
 logger = logging.getLogger(__name__)
 
 COMMANDS = """
-🤖 *ბოტის ბრძანებები:*
+*Bot commands:*
 
-/status — სისტემის სტატუსი
-/snapshot — ბოლო სნეფშოტი
-/disk — დისკის გამოყენება
-/stop — სისტემის გაჩერება
-/start — სისტემის გაშვება
-/password <ახალი პაროლი> — პაროლის შეცვლა
-/help — ბრძანებების სია
+/status - system status
+/snapshot - latest snapshot
+/disk - disk usage
+/stop - pause detection
+/start - resume detection
+/password <new password> - change web password
+/help - list commands
 """
 
 
@@ -131,7 +131,7 @@ class TelegramBot:
             handler()
         elif text:
             self._send(
-                "❓ უცნობი ბრძანება. გამოიყენე /help ბრძანებების სანახავად."
+                "Unknown command. Use /help to see the available commands."
             )
 
     # ── Command implementations ───────────────────────────────────────
@@ -144,17 +144,17 @@ class TelegramBot:
         hours   = int(uptime.total_seconds() // 3600)
         minutes = int((uptime.total_seconds() % 3600) // 60)
         stats   = self.storage.get_stats()
-        armed   = "✅ ჩართული" if self._armed else "⏸ გაჩერებული"
+        armed   = "on" if self._armed else "paused"
 
         msg = (
-            f"📊 *სისტემის სტატუსი*\n\n"
-            f"🔒 სტატუსი: {armed}\n"
-            f"⏱ მუშაობის დრო: {hours}სთ {minutes}წთ\n"
-            f"📸 სნეფშოტები: {stats['snapshots']}\n"
-            f"🎥 ჩანაწერები: {stats['recordings']}\n"
-            f"💾 დისკი: {stats['disk_percent']}% "
-            f"({stats['disk_used_gb']}/{stats['disk_total_gb']} გბ)\n"
-            f"🎬 ჩაწერა: {'🔴 მიმდინარეობს' if self.camera.is_recording else '⏹ არ მიმდინარეობს'}"
+            f"*System status*\n\n"
+            f"Detection: {armed}\n"
+            f"Uptime: {hours}h {minutes}m\n"
+            f"Snapshots: {stats['snapshots']}\n"
+            f"Recordings: {stats['recordings']}\n"
+            f"Disk: {stats['disk_percent']}% "
+            f"({stats['disk_used_gb']}/{stats['disk_total_gb']} GB)\n"
+            f"Recording: {'yes' if self.camera.is_recording else 'no'}"
         )
         self._send(msg)
 
@@ -162,7 +162,7 @@ class TelegramBot:
         """Send the most recent saved snapshot."""
         snapshots = self.storage.list_snapshots()
         if not snapshots:
-            self._send("📭 სნეფშოტები ჯერ არ არის.")
+            self._send("No snapshots yet.")
             return
 
         latest   = snapshots[0]
@@ -173,10 +173,10 @@ class TelegramBot:
                 img_bytes = f.read()
 
             parts    = latest.replace('.jpg', '').split('_')
-            label    = parts[2] if len(parts) > 2 else 'უცნობი'
+            label    = parts[2] if len(parts) > 2 else 'unknown'
             t        = parts[1] if len(parts) > 1 else ''
             time_str = f"{t[:2]}:{t[2:4]}:{t[4:6]}" if len(t) >= 6 else ''
-            caption  = f"📸 *ბოლო სნეფშოტი*\n🏷 {label}\n🕐 {time_str}"
+            caption  = f"*Latest snapshot*\nLabel: {label}\nTime: {time_str}"
 
             url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
             requests.post(
@@ -191,47 +191,46 @@ class TelegramBot:
             )
         except Exception as e:
             logger.error(f"Snapshot send error: {e}")
-            self._send(f"❌ სნეფშოტის გაგზავნა ვერ მოხერხდა: {e}")
+            self._send(f"Could not send snapshot: {e}")
 
     def _cmd_disk(self):
         stats       = self.storage.get_stats()
         pct         = stats['disk_percent']
-        icon        = "🔴" if pct > 85 else "🟡" if pct > 70 else "🟢"
         bar_filled  = int(pct / 10)
         bar         = "█" * bar_filled + "░" * (10 - bar_filled)
 
         msg = (
-            f"💾 *დისკის სტატუსი*\n\n"
-            f"{icon} გამოყენება: {pct}%\n"
+            f"*Disk usage*\n\n"
+            f"Usage: {pct}%\n"
             f"`{bar}` {pct}%\n"
-            f"გამოყენებულია: {stats['disk_used_gb']} გბ\n"
-            f"სულ: {stats['disk_total_gb']} გბ\n\n"
-            f"📸 სნეფშოტები: {stats['snapshots']}\n"
-            f"🎥 ჩანაწერები: {stats['recordings']}"
+            f"Used: {stats['disk_used_gb']} GB\n"
+            f"Total: {stats['disk_total_gb']} GB\n\n"
+            f"Snapshots: {stats['snapshots']}\n"
+            f"Recordings: {stats['recordings']}"
         )
         self._send(msg)
 
     def _cmd_stop(self):
         """Disarm — pause detection."""
         if not self._armed:
-            self._send("⏸ სისტემა უკვე გაჩერებულია.")
+            self._send("Detection is already paused.")
             return
         self._armed = False
         self.motion.reset()
         self._send(
-            "⏸ *დეტექტირება გაჩერებულია*\n"
-            "გასაგრძელებლად გამოიყენე /start"
+            "*Detection paused*\n"
+            "Use /start to resume."
         )
         logger.info("System disarmed via Telegram")
 
     def _cmd_start(self):
         """Rearm — resume detection."""
         if self._armed:
-            self._send("✅ სისტემა უკვე ჩართულია.")
+            self._send("Detection is already on.")
             return
         self._armed = True
         self.motion.reset()
-        self._send("✅ *დეტექტირება განახლდა*")
+        self._send("*Detection resumed*")
         logger.info("System rearmed via Telegram")
 
     def _cmd_password(self):
@@ -240,13 +239,13 @@ class TelegramBot:
         parts = self._last_text.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             self._send(
-                "⚠️ გამოყენება: `/password ახალი_პაროლი`\n\n"
-                "მოთხოვნები:\n"
-                "• მინიმუმ 8 სიმბოლო\n"
-                "• მინიმუმ ერთი დიდი ასო\n"
-                "• მინიმუმ ერთი პატარა ასო\n"
-                "• მინიმუმ ერთი ციფრი\n"
-                "• მინიმუმ ერთი სპეციალური სიმბოლო"
+                "Usage: `/password <new password>`\n\n"
+                "Requirements:\n"
+                "- at least 8 characters\n"
+                "- at least one uppercase letter\n"
+                "- at least one lowercase letter\n"
+                "- at least one digit\n"
+                "- at least one special character"
             )
             return
 
@@ -254,10 +253,10 @@ class TelegramBot:
         success, message = change_password('admin', new_password)
 
         if success:
-            self._send(f"✅ *{message}*\nახალი პაროლი ძალაშია.")
+            self._send(f"*{message}*\nThe new password is now active.")
             logger.info("Password changed via Telegram bot")
         else:
-            self._send(f"❌ *შეცდომა:* {message}")
+            self._send(f"*Error:* {message}")
 
     @property
     def armed(self):

@@ -41,8 +41,7 @@ class MotionDetector:
             idle_time = now - self._last_motion_time
             if idle_time > IDLE_RESET_SECONDS:
                 logger.debug(
-                    f"მოძრაობა {idle_time:.0f} წამია არ ყოფილა — "
-                    f"ბუფერი განულდა"
+                    f"No motion for {idle_time:.0f}s — frame buffer reset"
                 )
                 self._prev_frame = None
 
@@ -87,4 +86,4 @@ class MotionDetector:
         """Manually reset the frame buffer."""
         self._prev_frame       = None
         self._last_motion_time = time.time()
-        logger.debug("მოძრაობის დეტექტორი განულდა")
+        logger.debug("Motion detector reset")
