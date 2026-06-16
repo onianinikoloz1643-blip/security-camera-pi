@@ -58,28 +58,19 @@ class TelegramNotifier:
 
         try:
             # Build caption
-            label_ka = {
-                'person':     'ადამიანი',
-                'car':        'მანქანა',
-                'truck':      'სატვირთო',
-                'bus':        'ავტობუსი',
-                'motorcycle': 'მოტოციკლი',
-                'bicycle':    'ველოსიპედი',
-            }
-
             counts = {}
             for d in new_detections:
                 counts[d['label']] = counts.get(d['label'], 0) + 1
 
             parts = [
-                f"{label_ka.get(l, l)}: {c}"
+                f"{l}: {c}"
                 for l, c in counts.items()
             ]
 
             text = (
-                f"🚨 *დეტექტირება*\n"
-                f"📋 {', '.join(parts)}\n"
-                f"🎯 სიზუსტე: "
+                f"*Detection*\n"
+                f"{', '.join(parts)}\n"
+                f"Confidence: "
                 f"{max(d['score'] for d in new_detections):.0%}"
             )
 

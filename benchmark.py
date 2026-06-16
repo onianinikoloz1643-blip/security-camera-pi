@@ -253,12 +253,12 @@ def save_results(inference, motion, system):
     with open(output_path, 'w') as f:
         f.write('\n'.join(lines))
 
-    print(f"\n✅ Results saved to: {output_path}")
+    print(f"\nResults saved to: {output_path}")
     return output_path
 
 
 def main():
-    print("\n🔬 SECURITY CAMERA PERFORMANCE BENCHMARK")
+    print("\nSECURITY CAMERA PERFORMANCE BENCHMARK")
     print("This will take about 1-2 minutes to complete...\n")
 
     system   = benchmark_system()
@@ -276,7 +276,7 @@ def main():
     print(f"  RAM used:   {system['ram_used_mb']}MB / {system['ram_total_mb']}MB")
 
     fps_ok = inference['fps'] >= 7
-    print(f"\n  Target FPS (>= 7): {'✅ PASS' if fps_ok else '❌ FAIL'}")
+    print(f"\n  Target FPS (>= 7): {'PASS' if fps_ok else 'FAIL'}")
     print('='*50)
 
 

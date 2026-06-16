@@ -7,9 +7,9 @@ import os
 import sys
 
 from config import BASE_DIR
-PASS = "✅"
-FAIL = "❌"
-WARN = "⚠️ "
+PASS = "[PASS]"
+FAIL = "[FAIL]"
+WARN = "[WARN]"
 
 results = []
 
@@ -230,10 +230,10 @@ print(f"  SUMMARY: {passed}/{total} passed  |  "
 print('='*50)
 
 if failed == 0 and warned == 0:
-    print("  🎉 All checks passed — system is ready!")
+    print("  All checks passed — system is ready!")
 elif failed == 0:
-    print("  ✅ All critical checks passed — review warnings above")
+    print("  All critical checks passed — review warnings above")
 else:
-    print("  ❌ Some checks failed — fix the issues above before running")
+    print("  Some checks failed — fix the issues above before running")
 
 print()

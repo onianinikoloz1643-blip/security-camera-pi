@@ -159,7 +159,7 @@ def main():
     logger.info(f"Web interface: https://raspberrypi.local:{WEB_PORT}")
 
     # Telegram startup message and bot
-    notifier.send_message("✅ *Security camera started*")
+    notifier.send_message("*Security camera started*")
     bot.start()
 
     # Start camera
@@ -167,7 +167,7 @@ def main():
         camera.start()
     except RuntimeError as e:
         logger.critical(f"Camera start failed: {e}")
-        notifier.send_message(f"❌ *Camera failed to start:* {e}")
+        notifier.send_message(f"*Camera failed to start:* {e}")
         return
 
     logger.info("System ready — detection starting")
@@ -178,14 +178,14 @@ def main():
         logger.info("Shutdown — Ctrl+C")
     except Exception as e:
         logger.critical(f"Critical error: {e}", exc_info=True)
-        notifier.send_message(f"❌ *System crashed:* {e}")
+        notifier.send_message(f"*System crashed:* {e}")
     finally:
         logger.info("Shutting down...")
         if camera.is_recording:
             camera.stop_recording(storage)
         camera.stop()
         bot.stop()
-        notifier.send_message("🔴 *Security camera stopped*")
+        notifier.send_message("*Security camera stopped*")
         logger.info("System stopped cleanly")
 
 
