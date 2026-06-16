@@ -23,7 +23,6 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
     last_detection_time = 0
     last_disk_update    = 0
-    motion_skip_count   = 0
 
     logger.info("Camera loop started")
 
@@ -45,25 +44,14 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                 time.sleep(1.0 / FPS)
                 continue
 
-            # ── Motion filter ─────────────────────────────────────────
+            # ── Motion filter: gate the expensive detection ───────────
+            motion_detected = True
             if MOTION_ENABLED:
                 motion_detected, _ = motion.detect(frame)
-                if not motion_detected:
-                    motion_skip_count += 1
-                    if motion_skip_count % 100 == 0:
-                        logger.debug(
-                            f"No motion — {motion_skip_count} frames skipped"
-                        )
-                    # Still write frame if recording is active
-                    if camera.is_recording:
-                        camera.write_frame(frame, storage)
-                    time.sleep(1.0 / FPS)
-                    continue
 
-                motion_skip_count = 0
-
-            # ── ML Detection ──────────────────────────────────────────
-            detections = detector.detect(frame)
+            # Only run inference on moving frames; a still frame counts as
+            # "no detection" so the recording cooldown below still ticks.
+            detections = detector.detect(frame) if motion_detected else []
 
             if detections:
                 labels = [d['label'] for d in detections]
@@ -100,14 +88,14 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
                 last_detection_time = now
 
-            else:
-                # Stop recording after cooldown with no detections
-                if camera.is_recording:
-                    if now - last_detection_time >= RECORDING_COOLDOWN:
-                        camera.stop_recording(storage)
-                        push_event('recording_stop', {
-                            'total': len(storage.list_recordings())
-                        })
+            # End the event once the cooldown passes with no detections. Runs
+            # every frame — including still ones — so a recording always stops
+            # and the next appearance starts a fresh event.
+            elif camera.is_recording and now - last_detection_time >= RECORDING_COOLDOWN:
+                camera.stop_recording(storage)
+                push_event('recording_stop', {
+                    'total': len(storage.list_recordings())
+                })
 
             # Write frame to active recording
             if camera.is_recording:

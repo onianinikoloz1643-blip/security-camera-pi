@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 def run_camera_loop(camera, detector, motion, storage, notifier, bot):
     last_detection_time = 0
     last_disk_update    = 0
-    motion_skip_count   = 0
 
     logger.info("Test loop started — using MockCamera")
 
@@ -51,17 +50,11 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
                 time.sleep(1.0 / FPS)
                 continue
 
+            motion_detected = True
             if MOTION_ENABLED:
                 motion_detected, _ = motion.detect(frame)
-                if not motion_detected:
-                    motion_skip_count += 1
-                    if camera.is_recording:
-                        camera.write_frame(frame, storage)
-                    time.sleep(1.0 / FPS)
-                    continue
-                motion_skip_count = 0
 
-            detections = detector.detect(frame)
+            detections = detector.detect(frame) if motion_detected else []
 
             if detections:
                 labels = [d['label'] for d in detections]
@@ -91,13 +84,11 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
 
                 last_detection_time = now
 
-            else:
-                if camera.is_recording:
-                    if now - last_detection_time >= RECORDING_COOLDOWN:
-                        camera.stop_recording(storage)
-                        push_event('recording_stop', {
-                            'total': len(storage.list_recordings())
-                        })
+            elif camera.is_recording and now - last_detection_time >= RECORDING_COOLDOWN:
+                camera.stop_recording(storage)
+                push_event('recording_stop', {
+                    'total': len(storage.list_recordings())
+                })
 
             if camera.is_recording:
                 camera.write_frame(frame, storage)
