@@ -64,6 +64,9 @@ HTML_TEMPLATE = '''
     .card:hover{transform:scale(1.02)}
     .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
     .card video{width:100%;display:block;aspect-ratio:16/9;background:#000}
+    /* No audio in recordings — hide the volume/mute control (Chromium/WebKit) */
+    video::-webkit-media-controls-mute-button,
+    video::-webkit-media-controls-volume-control-container{display:none}
     .card-info{padding:8px 12px;font-size:.78em;color:#888}
     .card-info .label{color:#fff;font-weight:bold;text-transform:capitalize}
     .card-info a{color:#4a9eff;text-decoration:none;font-size:.85em}
@@ -168,6 +171,16 @@ document.getElementById('snap-grid').addEventListener('click', e => {
 });
 document.getElementById('rec-container').addEventListener('click', e => {
   if (e.target.tagName === 'IMG') openLightbox(e.target.src);
+});
+
+// Double-tap the left/right half of a playing clip to skip 10s back/forward.
+document.getElementById('rec-container').addEventListener('dblclick', e => {
+  const v = e.target;
+  if (v.tagName !== 'VIDEO' || !v.duration) return;
+  e.preventDefault();
+  const rect = v.getBoundingClientRect();
+  const back = (e.clientX - rect.left) < rect.width / 2;
+  v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + (back ? -10 : 10)));
 });
 
 // Wheel zooms (1x-5x); drag pans when zoomed; click closes (unless dragging).
@@ -276,7 +289,7 @@ function renderRecordings(list) {
     const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
     const poster = rec.thumb ? ' poster="/snapshots/'+rec.thumb+'"' : '';
     const media = rec.file.endsWith('.mp4')
-      ? '<video controls preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
+      ? '<video controls controlsList="nodownload noremoteplayback" preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
       : (rec.thumb
           ? '<img src="/snapshots/'+rec.thumb+'" loading="lazy" alt="">'
           : '<div class="rec-noimg">no preview</div>');
