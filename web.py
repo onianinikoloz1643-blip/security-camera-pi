@@ -63,6 +63,7 @@ HTML_TEMPLATE = '''
     .card{background:#1a1a1a;border-radius:8px;overflow:hidden;transition:transform .2s}
     .card:hover{transform:scale(1.02)}
     .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
+    .card video{width:100%;display:block;aspect-ratio:16/9;background:#000}
     .card-info{padding:8px 12px;font-size:.78em;color:#888}
     .card-info .label{color:#fff;font-weight:bold;text-transform:capitalize}
     .card-info a{color:#4a9eff;text-decoration:none;font-size:.85em}
@@ -273,10 +274,13 @@ function renderRecordings(list) {
     const d = ts.slice(0, 8), t = ts.slice(9, 15);
     const date = d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
     const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
-    const thumb = rec.thumb
-      ? '<img src="/snapshots/'+rec.thumb+'" loading="lazy" alt="">'
-      : '<div class="rec-noimg">no preview</div>';
-    return '<div class="card">'+thumb+
+    const poster = rec.thumb ? ' poster="/snapshots/'+rec.thumb+'"' : '';
+    const media = rec.file.endsWith('.mp4')
+      ? '<video controls preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
+      : (rec.thumb
+          ? '<img src="/snapshots/'+rec.thumb+'" loading="lazy" alt="">'
+          : '<div class="rec-noimg">no preview</div>');
+    return '<div class="card">'+media+
       '<div class="card-info"><span class="label">'+date+' '+time+'</span>'+
       '<div><a href="/recordings/'+rec.file+'" download>Download</a></div>'+
       '</div></div>';

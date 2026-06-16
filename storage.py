@@ -3,6 +3,8 @@ import cv2
 import shutil
 import logging
 import logging.handlers
+import subprocess
+import threading
 from datetime import datetime
 from config import (
     BASE_DIR, LOG_LEVEL, LOG_MAX_BYTES,
@@ -163,10 +165,62 @@ class StorageManager:
                 f"Recording stopped: {os.path.basename(filepath)} "
                 f"({size_mb:.1f} MB)"
             )
+            # Convert to MP4 in the background so it plays in the browser and
+            # in Telegram. Keeps the AVI if ffmpeg is missing or the run fails.
+            threading.Thread(
+                target=self._transcode_to_mp4,
+                args=(filepath,),
+                daemon=True
+            ).start()
         else:
             logger.warning(
                 f"Recording stopped but file is missing: {filepath}"
             )
+
+    def _transcode_to_mp4(self, avi_path):
+        """Convert a finished AVI clip to H.264 MP4, then delete the AVI.
+        On any failure (including ffmpeg not installed) the AVI is kept."""
+        mp4_path = os.path.splitext(avi_path)[0] + '.mp4'
+        tmp_path = mp4_path + '.tmp'
+        try:
+            result = subprocess.run(
+                ['ffmpeg', '-y', '-i', avi_path,
+                 '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+                 '-threads', '2', '-movflags', '+faststart', tmp_path],
+                capture_output=True, timeout=600
+            )
+            if result.returncode == 0 and os.path.exists(tmp_path):
+                os.replace(tmp_path, mp4_path)
+                os.remove(avi_path)
+                logger.info(f"Converted to MP4: {os.path.basename(mp4_path)}")
+            else:
+                logger.warning(
+                    f"MP4 conversion failed for {os.path.basename(avi_path)} "
+                    f"— keeping AVI"
+                )
+                self._remove_quiet(tmp_path)
+        except FileNotFoundError:
+            logger.warning(
+                "ffmpeg not found — keeping AVI. Install with: "
+                "sudo apt install ffmpeg"
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                f"MP4 conversion timed out for {os.path.basename(avi_path)} "
+                f"— keeping AVI"
+            )
+            self._remove_quiet(tmp_path)
+        except Exception as e:
+            logger.error(f"MP4 conversion error: {e}")
+            self._remove_quiet(tmp_path)
+
+    @staticmethod
+    def _remove_quiet(path):
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     def should_split_recording(self, start_time):
         """
@@ -188,7 +242,7 @@ class StorageManager:
     def list_recordings(self):
         files = [
             f for f in os.listdir(self.recordings_dir)
-            if f.endswith('.avi')
+            if f.endswith('.mp4') or f.endswith('.avi')
         ]
         return sorted(files, reverse=True)
 

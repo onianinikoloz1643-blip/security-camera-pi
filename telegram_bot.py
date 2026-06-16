@@ -248,11 +248,16 @@ class TelegramBot:
         try:
             with open(filepath, 'rb') as f:
                 data = f.read()
-            url = f"https://api.telegram.org/bot{self.token}/sendDocument"
+            if latest.endswith('.mp4'):
+                url   = f"https://api.telegram.org/bot{self.token}/sendVideo"
+                files = {'video': (latest, data, 'video/mp4')}
+            else:
+                url   = f"https://api.telegram.org/bot{self.token}/sendDocument"
+                files = {'document': (latest, data, 'video/x-msvideo')}
             requests.post(
                 url,
                 data={'chat_id': self.chat_id, 'caption': latest},
-                files={'document': (latest, data, 'video/x-msvideo')},
+                files=files,
                 timeout=180
             )
             logger.info(f"Recording sent via Telegram: {latest}")
