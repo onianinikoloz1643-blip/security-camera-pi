@@ -332,7 +332,7 @@ function renderRecordings(list) {
     const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
     const poster = rec.thumb ? ' poster="/snapshots/'+rec.thumb+'"' : '';
     const media = rec.file.endsWith('.mp4')
-      ? '<div class="player"><video preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
+      ? '<div class="player"><video playsinline preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
         + '<div class="vbar">'
         +   '<button class="vbtn" data-act="play" title="Play/pause">'+SVG_PLAY+'</button>'
         +   '<button class="vbtn" data-act="back" title="Back 10s">'+SVG_BACK+'</button>'
@@ -384,12 +384,15 @@ def index():
     snapshots  = storage.list_snapshots()  if storage else []
     recordings = storage.list_recordings() if storage else []
     stats      = storage.get_stats()       if storage else {}
-    return render_template_string(
+    resp = app.make_response(render_template_string(
         HTML_TEMPLATE,
         snapshots=snapshots,
         recordings=recordings,
         stats=stats
-    )
+    ))
+    # Never cache the dashboard HTML, so UI changes always load.
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @app.route('/stream')
