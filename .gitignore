@@ -34,3 +34,6 @@ __pycache__/
 Thumbs.db
 benchmark_results.txt
 test_camera.jpg
+
+# Submission documents — keep local, never push
+*.docx
