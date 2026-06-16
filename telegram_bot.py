@@ -225,6 +225,26 @@ class TelegramBot:
             )
             return
 
+        # Send the matching event snapshot first (it shares the clip's
+        # timestamp), so the image arrives together with its footage.
+        ts_prefix = '_'.join(latest.split('_')[:2])
+        thumb = next(
+            (s for s in self.storage.list_snapshots() if s.startswith(ts_prefix)),
+            None
+        )
+        if thumb:
+            try:
+                with open(os.path.join(self.storage.snapshots_dir, thumb), 'rb') as sf:
+                    img = sf.read()
+                requests.post(
+                    f"https://api.telegram.org/bot{self.token}/sendPhoto",
+                    data={'chat_id': self.chat_id, 'caption': f"Snapshot for {latest}"},
+                    files={'photo': ('snapshot.jpg', img, 'image/jpeg')},
+                    timeout=15
+                )
+            except Exception as e:
+                logger.warning(f"Snapshot-with-video send error: {e}")
+
         try:
             with open(filepath, 'rb') as f:
                 data = f.read()
