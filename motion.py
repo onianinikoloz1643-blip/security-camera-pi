@@ -54,6 +54,12 @@ class MotionDetector:
         delta = cv2.absdiff(self._prev_frame, gray)
         self._prev_frame = gray
 
+        # [diag] a live camera always has a >0 frame delta (sensor noise);
+        # an exactly-0 delta means capture keeps returning the same frame (frozen)
+        self._diag_count = getattr(self, '_diag_count', 0) + 1
+        if self._diag_count % 100 == 0:
+            logger.info(f"[diag] frame delta sum={int(delta.sum())}")
+
         # Threshold
         _, thresh = cv2.threshold(
             delta, self.threshold, 255, cv2.THRESH_BINARY
