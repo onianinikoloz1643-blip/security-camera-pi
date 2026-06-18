@@ -4,7 +4,7 @@ import logging
 import threading
 
 from config import (
-    RECORDING_COOLDOWN,
+    RECORDING_COOLDOWN, PRESENCE_CHECK_INTERVAL,
     MOTION_ENABLED, WEB_PORT, FPS
 )
 from storage import StorageManager, setup_logging
@@ -14,6 +14,7 @@ from motion import MotionDetector
 from telegram_notify import TelegramNotifier
 from telegram_bot import TelegramBot
 from web import start_web, push_event
+from heartbeat import start_heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,9 @@ logger = logging.getLogger(__name__)
 def run_camera_loop(camera, detector, motion, storage, notifier, bot):
     """Main loop: capture → motion → detect → store."""
 
-    last_activity_time = 0
-    last_disk_update   = 0
+    last_activity_time  = 0
+    last_presence_check = 0
+    last_disk_update    = 0
 
     logger.info("Camera loop started")
 
@@ -49,10 +51,20 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
             if MOTION_ENABLED:
                 motion_detected, _ = motion.detect(frame)
 
-            detections = detector.detect(frame) if motion_detected else []
+            # run detection on motion; while recording, also re-check every so
+            # often even with no motion, so a person who stops moving but stays
+            # in frame keeps the clip alive until they actually leave
+            check_presence = (
+                camera.is_recording
+                and now - last_presence_check >= PRESENCE_CHECK_INTERVAL
+            )
+            if motion_detected or check_presence:
+                detections = detector.detect(frame)
+                last_presence_check = now
+            else:
+                detections = []
 
-            # keep a recording alive while anything moves, so a clip runs until
-            # the object stops/leaves, not just until the detector last saw it
+            # motion or a detection keeps the clip alive
             if motion_detected or detections:
                 last_activity_time = now
 
@@ -148,6 +160,7 @@ def main():
     # Telegram startup message and bot
     notifier.send_message("*Security camera started*")
     bot.start()
+    start_heartbeat()
 
     # Start camera
     try:

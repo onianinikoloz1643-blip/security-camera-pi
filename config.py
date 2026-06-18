@@ -18,7 +18,8 @@ CAMERA_VFLIP = True   # flip vertically
 # ── Detection ─────────────────────────────────────────────────────────
 DETECTION_THRESHOLD = 0.4   # Min confidence for detection (0.0-1.0)
 CONSECUTIVE_FRAMES_REQUIRED = 2  # Require N consecutive frames per label
-RECORDING_COOLDOWN  = 10    # Seconds to keep recording after last detection
+RECORDING_COOLDOWN  = 10    # seconds to keep recording after the object leaves the frame
+PRESENCE_CHECK_INTERVAL = 1.0  # while recording, re-run detection this often even with no motion
 SNAPSHOT_INTERVAL   = 3     # Min seconds between snapshots
 
 # ── Detection diagnostics ─────────────────────────────────────────────
@@ -50,6 +51,10 @@ TELEGRAM_BOT_TOKEN          = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID            = os.getenv('TELEGRAM_CHAT_ID', '')
 TELEGRAM_COOLDOWN           = 30   # Seconds between alerts
 TELEGRAM_COOLDOWN_PER_LABEL = 60   # Seconds between alerts for same label
+
+# ── Heartbeat (optional) — outbound ping so a monitor alerts you if the Pi dies ──
+HEARTBEAT_URL      = os.getenv('HEARTBEAT_URL', '')
+HEARTBEAT_INTERVAL = 300   # seconds between pings
 
 # ── Logging ───────────────────────────────────────────────────────────
 LOG_LEVEL        = 'INFO'

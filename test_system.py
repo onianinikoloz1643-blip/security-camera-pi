@@ -11,7 +11,7 @@ import logging
 import threading
 
 from config import (
-    RECORDING_COOLDOWN,
+    RECORDING_COOLDOWN, PRESENCE_CHECK_INTERVAL,
     MOTION_ENABLED, WEB_PORT, FPS
 )
 from storage import StorageManager, setup_logging
@@ -27,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 def run_camera_loop(camera, detector, motion, storage, notifier, bot):
-    last_activity_time = 0
-    last_disk_update   = 0
+    last_activity_time  = 0
+    last_presence_check = 0
+    last_disk_update    = 0
 
     logger.info("Test loop started — using MockCamera")
 
@@ -54,7 +55,15 @@ def run_camera_loop(camera, detector, motion, storage, notifier, bot):
             if MOTION_ENABLED:
                 motion_detected, _ = motion.detect(frame)
 
-            detections = detector.detect(frame) if motion_detected else []
+            check_presence = (
+                camera.is_recording
+                and now - last_presence_check >= PRESENCE_CHECK_INTERVAL
+            )
+            if motion_detected or check_presence:
+                detections = detector.detect(frame)
+                last_presence_check = now
+            else:
+                detections = []
 
             if motion_detected or detections:
                 last_activity_time = now
