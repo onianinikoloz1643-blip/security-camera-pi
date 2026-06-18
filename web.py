@@ -179,16 +179,6 @@ document.getElementById('rec-container').addEventListener('click', e => {
   if (e.target.tagName === 'IMG') openLightbox(e.target.src);
 });
 
-// double-tap left/right half to skip 10s
-document.getElementById('rec-container').addEventListener('dblclick', e => {
-  const v = e.target;
-  if (v.tagName !== 'VIDEO' || !v.duration) return;
-  e.preventDefault();
-  const rect = v.getBoundingClientRect();
-  const back = (e.clientX - rect.left) < rect.width / 2;
-  v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + (back ? -10 : 10)));
-});
-
 // Wheel zooms (1x-5x); drag pans when zoomed; click closes (unless dragging).
 lightbox.addEventListener('wheel', e => {
   e.preventDefault();
@@ -216,6 +206,41 @@ window.addEventListener('mouseup', () => { lbDragging = false; });
 lightbox.addEventListener('click', () => {
   if (lbMoved) { lbMoved = false; return; }
   lightbox.classList.remove('show');
+});
+
+// Touch: pinch to zoom (1x-5x), one finger to pan when zoomed, tap to close.
+function lbTouchDist(t) {
+  return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+}
+let lbPinch = 0;
+lightbox.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    lbPinch = lbTouchDist(e.touches);
+    lbMoved = true;
+  } else if (e.touches.length === 1 && lbScale > 1) {
+    lbDragging = true; lbMoved = false;
+    lbStartX = e.touches[0].clientX - lbX;
+    lbStartY = e.touches[0].clientY - lbY;
+  }
+}, { passive: false });
+lightbox.addEventListener('touchmove', e => {
+  if (e.touches.length === 2 && lbPinch) {
+    e.preventDefault();
+    const d = lbTouchDist(e.touches);
+    lbScale = Math.max(1, Math.min(5, lbScale * (d / lbPinch)));
+    if (lbScale === 1) { lbX = 0; lbY = 0; }
+    lbPinch = d; lbMoved = true;
+    lbApply();
+  } else if (e.touches.length === 1 && lbDragging) {
+    e.preventDefault();
+    lbX = e.touches[0].clientX - lbStartX;
+    lbY = e.touches[0].clientY - lbStartY;
+    lbMoved = true;
+    lbApply();
+  }
+}, { passive: false });
+lightbox.addEventListener('touchend', e => {
+  if (e.touches.length === 0) { lbPinch = 0; lbDragging = false; }
 });
 
 function showToast(msg) {
@@ -292,6 +317,30 @@ function fmtTime(s) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+// the video the user last interacted with — the Space key controls this one
+let activeVideo = null;
+
+function togglePlay(v) {
+  if (!v) return;
+  if (v.paused) v.play(); else v.pause();
+}
+function skip(v, secs) {
+  if (!v || !v.duration) return;
+  v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + secs));
+}
+
+// Space toggles play/pause on the active video (or the first one).
+// Ignored while typing in an input or dragging the seek bar.
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.key !== ' ') return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  const v = activeVideo || document.querySelector('#rec-container video');
+  if (!v) return;
+  e.preventDefault();
+  togglePlay(v);
+});
+
 // hook up the custom controls after each render
 function wirePlayers() {
   document.querySelectorAll('#rec-container .player').forEach(p => {
@@ -299,14 +348,33 @@ function wirePlayers() {
     const seek = p.querySelector('.vseek');
     const time = p.querySelector('.vtime');
     const playBtn = p.querySelector('[data-act="play"]');
+
     p.querySelectorAll('.vbtn').forEach(b => b.addEventListener('click', () => {
       const a = b.dataset.act;
-      if (a === 'play') { v.paused ? v.play() : v.pause(); }
-      else if (a === 'back') { v.currentTime = Math.max(0, v.currentTime - 10); }
-      else if (a === 'fwd')  { v.currentTime = Math.min(v.duration || 0, v.currentTime + 10); }
+      activeVideo = v;
+      if (a === 'play') togglePlay(v);
+      else if (a === 'back') skip(v, -10);
+      else if (a === 'fwd')  skip(v, 10);
       else if (a === 'full') { (p.requestFullscreen || p.webkitRequestFullscreen).call(p); }
     }));
-    v.addEventListener('play',  () => { playBtn.innerHTML = SVG_PAUSE; });
+
+    // single click = play/pause; double click = skip ±10s.
+    // delay the single click briefly so a double click can cancel it.
+    let clickTimer = null;
+    v.addEventListener('click', () => {
+      activeVideo = v;
+      if (clickTimer) return;
+      clickTimer = setTimeout(() => { clickTimer = null; togglePlay(v); }, 220);
+    });
+    v.addEventListener('dblclick', e => {
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      e.preventDefault();
+      const rect = v.getBoundingClientRect();
+      const back = (e.clientX - rect.left) < rect.width / 2;
+      skip(v, back ? -10 : 10);
+    });
+
+    v.addEventListener('play',  () => { activeVideo = v; playBtn.innerHTML = SVG_PAUSE; });
     v.addEventListener('pause', () => { playBtn.innerHTML = SVG_PLAY; });
     v.addEventListener('timeupdate', () => {
       if (v.duration) {
