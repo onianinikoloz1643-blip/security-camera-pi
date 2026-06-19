@@ -2,10 +2,32 @@ import cv2
 import logging
 from config import (
     FRAME_WIDTH, FRAME_HEIGHT, FPS,
-    CAMERA_HFLIP, CAMERA_VFLIP, CAMERA_BACKEND,
+    CAMERA_HFLIP, CAMERA_VFLIP,
+    CAMERA_BACKEND, CAMERA_DEVICE, CAMERA_PROBE_MAX_INDEX,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_flip(frame):
+    """Honor CAMERA_HFLIP / CAMERA_VFLIP in software — used by backends that have
+    no sensor-level transform (i.e. USB/OpenCV; the CSI backend flips in libcamera)."""
+    if CAMERA_HFLIP and CAMERA_VFLIP:
+        return cv2.flip(frame, -1)
+    if CAMERA_HFLIP:
+        return cv2.flip(frame, 1)
+    if CAMERA_VFLIP:
+        return cv2.flip(frame, 0)
+    return frame
+
+
+def _no_camera_msg(checked):
+    return (
+        "No working camera found (checked: " + ", ".join(checked) + "). "
+        "For CSI: connect it and enable it in /boot/firmware/config.txt "
+        "(camera_auto_detect=1, or the correct dtoverlay), then reboot. "
+        "For USB: plug in a UVC/V4L2 webcam."
+    )
 
 
 # ── Camera backends ───────────────────────────────────────────────────
@@ -85,6 +107,81 @@ class Picamera2Source:
             self._picam = None
 
 
+class OpenCVSource:
+    """USB / V4L2 webcam via OpenCV VideoCapture. Frames are already BGR.
+
+    NOTE: implemented but NOT hardware-verified — no USB webcam was available
+    during development. The CSI path does not depend on this class."""
+
+    name = "USB (OpenCV V4L2)"
+
+    def __init__(self, width, height, fps, device=None):
+        self.width  = width
+        self.height = height
+        self.fps    = fps
+        self._req_device = device   # None = probe a range; else a specific index
+        self.device = None
+        self._cap   = None
+
+    def open(self):
+        if self._req_device is not None:
+            try:
+                indices = [int(self._req_device)]
+            except (TypeError, ValueError):
+                logger.warning(f"Invalid CAMERA_DEVICE '{self._req_device}'")
+                return False
+        else:
+            indices = list(range(0, CAMERA_PROBE_MAX_INDEX + 1))
+
+        for idx in indices:
+            cap = self._open_index(idx)
+            if cap is not None:
+                self._cap   = cap
+                self.device = f"/dev/video{idx}"
+                return True
+        return False
+
+    def _open_index(self, idx):
+        try:
+            cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+        except Exception as e:
+            logger.debug(f"USB index {idx} did not open: {e}")
+            return None
+        if not cap.isOpened():
+            cap.release()
+            return None
+
+        # Request our preferred mode; the camera may snap to the nearest it has.
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        cap.set(cv2.CAP_PROP_FPS,          self.fps)
+
+        ok, frame = cap.read()
+        if not ok or frame is None or frame.size == 0:
+            cap.release()
+            return None
+
+        # adopt the actual frame size so recordings match what we capture
+        self.height, self.width = frame.shape[:2]
+        return cap
+
+    def read(self):
+        if not self._cap:
+            return None
+        ok, frame = self._cap.read()
+        if not ok or frame is None:
+            return None
+        return _apply_flip(frame)
+
+    def close(self):
+        if self._cap:
+            try:
+                self._cap.release()
+            except Exception:
+                pass
+            self._cap = None
+
+
 # ── Public facade ─────────────────────────────────────────────────────
 
 class Camera:
@@ -113,16 +210,19 @@ class Camera:
             if source.open():
                 self._use(source)
                 return
-            raise RuntimeError(
-                "No working camera found (checked: CSI via Picamera2). "
-                "Make sure a camera is connected and enabled in "
-                "/boot/firmware/config.txt (camera_auto_detect=1, or the "
-                "correct dtoverlay), then reboot."
-            )
+            # 'auto' will also try USB once the next stage wires it into the
+            # probe chain; for now both 'auto' and 'csi' stop here without CSI.
+            raise RuntimeError(_no_camera_msg(["CSI via Picamera2"]))
 
-        # The USB ('usb') backend is added in a later stage.
+        if backend == 'usb':
+            source = OpenCVSource(FRAME_WIDTH, FRAME_HEIGHT, FPS, device=CAMERA_DEVICE)
+            if source.open():
+                self._use(source)
+                return
+            raise RuntimeError(_no_camera_msg(["USB via OpenCV/V4L2"]))
+
         raise RuntimeError(
-            f"CAMERA_BACKEND='{backend}' is not supported yet; use 'auto' or 'csi'."
+            f"CAMERA_BACKEND='{backend}' is invalid; use 'auto', 'csi' or 'usb'."
         )
 
     def _use(self, source):

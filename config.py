@@ -13,14 +13,15 @@ LABEL_PATH  = os.path.join(BASE_DIR, 'models', 'labelmap.txt')
 FRAME_WIDTH  = 1280
 FRAME_HEIGHT = 720
 FPS          = 10
-CAMERA_HFLIP = True   # flip horizontally (camera is mounted upside down)
-CAMERA_VFLIP = True   # flip vertically
+CAMERA_HFLIP = os.getenv('CAMERA_HFLIP', 'true').lower() in ('1', 'true', 'yes', 'on')  # camera mounted upside down
+CAMERA_VFLIP = os.getenv('CAMERA_VFLIP', 'true').lower() in ('1', 'true', 'yes', 'on')
 
 # Camera backend selection. 'auto' detects a working camera (CSI first, then a
 # USB/V4L2 webcam); 'csi' or 'usb' force one. Override per-Pi with the
 # CAMERA_BACKEND / CAMERA_DEVICE env vars so you never have to edit this file.
 CAMERA_BACKEND = os.getenv('CAMERA_BACKEND', 'auto').lower()
 CAMERA_DEVICE  = os.getenv('CAMERA_DEVICE')   # None = auto; USB index e.g. '0'
+CAMERA_PROBE_MAX_INDEX = int(os.getenv('CAMERA_PROBE_MAX_INDEX', '5'))  # highest USB /dev/video index to probe
 
 # ── Detection ─────────────────────────────────────────────────────────
 DETECTION_THRESHOLD = 0.4   # Min confidence for detection (0.0-1.0)
