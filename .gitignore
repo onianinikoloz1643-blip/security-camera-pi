@@ -10,6 +10,7 @@ logs/
 # Security sensitive — never commit
 ssl/
 auth.txt
+telegram_settings.json
 
 # Model binary — too large, downloaded on install
 models/detect.tflite

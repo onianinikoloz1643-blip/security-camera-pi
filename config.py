@@ -1,4 +1,5 @@
 import os
+import json
 
 # ── Paths ─────────────────────────────────────────────────────────────
 # Default to the repository root so a normal git clone works out of the box.
@@ -45,10 +46,26 @@ SSL_ENABLED = True
 SSL_CERT    = os.path.join(BASE_DIR, 'ssl', 'cert.pem')
 SSL_KEY     = os.path.join(BASE_DIR, 'ssl', 'key.pem')
 
-# ── Telegram (token/chat id from env vars, not committed) ────────────
-TELEGRAM_ENABLED            = os.getenv('TELEGRAM_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
-TELEGRAM_BOT_TOKEN          = os.getenv('TELEGRAM_BOT_TOKEN', '')
-TELEGRAM_CHAT_ID            = os.getenv('TELEGRAM_CHAT_ID', '')
+# ── Telegram ──────────────────────────────────────────────────────────
+# The web settings form writes telegram_settings.json (gitignored). Its filled
+# fields take precedence; env vars are the fallback. Neither is committed.
+def _telegram_overrides():
+    try:
+        with open(os.path.join(BASE_DIR, 'telegram_settings.json')) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+_tg_file = _telegram_overrides()
+TELEGRAM_BOT_TOKEN          = (_tg_file.get('bot_token') or os.getenv('TELEGRAM_BOT_TOKEN', '')).strip()
+TELEGRAM_CHAT_ID            = str(_tg_file.get('chat_id') or os.getenv('TELEGRAM_CHAT_ID', '')).strip()
+_tg_env_enabled             = os.getenv('TELEGRAM_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+# Only truly enable when both credentials exist, so a half-filled form can never
+# crash-loop the service on startup (validate_config would otherwise reject it).
+TELEGRAM_ENABLED            = (
+    bool(_tg_file.get('enabled', _tg_env_enabled))
+    and bool(TELEGRAM_BOT_TOKEN) and bool(TELEGRAM_CHAT_ID)
+)
 TELEGRAM_COOLDOWN           = 30   # Seconds between alerts
 TELEGRAM_COOLDOWN_PER_LABEL = 60   # Seconds between alerts for same label
 

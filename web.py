@@ -3,8 +3,11 @@ import json
 import queue
 import logging
 import threading
-from flask import Flask, render_template_string, send_from_directory, jsonify, Response
-from config import WEB_HOST, WEB_PORT
+from flask import (
+    Flask, render_template_string, send_from_directory, jsonify, Response,
+    request, redirect
+)
+from config import WEB_HOST, WEB_PORT, BASE_DIR
 from auth import require_auth
 
 logger = logging.getLogger(__name__)
@@ -120,7 +123,8 @@ HTML_TEMPLATE = '''
 <div id="lightbox"><img id="lightbox-img" src="" alt=""></div>
 
 <h1>Security Camera</h1>
-<p class="subtitle">Live updates via Server-Sent Events</p>
+<p class="subtitle">Live updates via Server-Sent Events &nbsp;·&nbsp;
+  <a href="/settings" style="color:#4a9eff;text-decoration:none">Settings</a></p>
 
 <div class="statusbar">
   <div class="stat"><span class="dot"></span>System running</div>
@@ -464,6 +468,101 @@ refreshRecordings();
 '''
 
 
+SETTINGS_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings - Security Camera</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;background:#0f0f0f;color:#eee;padding:20px;max-width:560px;margin:0 auto}
+    a.back{color:#4a9eff;text-decoration:none;font-size:.9em}
+    h1{font-size:1.4em;margin:14px 0 4px}
+    .sub{color:#666;font-size:.85em;margin-bottom:18px}
+    .card{background:#1a1a1a;border-radius:8px;padding:20px}
+    label{display:block;margin:14px 0 4px;font-size:.85em;color:#ccc}
+    input[type=text],input[type=password]{width:100%;padding:10px;border-radius:6px;
+      border:1px solid #333;background:#111;color:#eee;font-size:.9em}
+    input::placeholder{color:#555}
+    .row{display:flex;align-items:center;gap:8px;margin:18px 0 4px}
+    .row input{width:auto}
+    .hint{color:#777;font-size:.75em;margin-top:4px}
+    .saved-token{color:#4caf50;font-size:.78em;margin-top:6px}
+    button{margin-top:20px;background:#2a8a4a;border:none;color:#fff;padding:11px 22px;
+      border-radius:6px;font-size:.9em;cursor:pointer}
+    button:hover{background:#33a557}
+    .note{background:#16242f;border:1px solid #2d4a6a;border-radius:6px;padding:12px 14px;
+      font-size:.78em;color:#9cc;margin-top:16px;line-height:1.5}
+    .ok{background:#1e3a1e;border:1px solid #4caf50;border-radius:6px;padding:12px 14px;
+      font-size:.85em;color:#a5d6a7;margin-bottom:16px;line-height:1.5}
+    code{background:#000;padding:1px 5px;border-radius:3px;font-size:.92em}
+  </style>
+</head>
+<body>
+<a class="back" href="/">&larr; Back to dashboard</a>
+<h1>Telegram alerts</h1>
+<p class="sub">Receive a photo alert on detection and control the camera from the bot.</p>
+
+{% if saved %}
+<div class="ok">Saved. Apply it by restarting the service on the Pi:<br>
+  <code>sudo systemctl restart security-camera</code></div>
+{% endif %}
+
+<form method="POST" action="/settings" autocomplete="off">
+  <div class="card">
+    <label for="bot_token">Bot token</label>
+    <input type="password" id="bot_token" name="bot_token" autocomplete="new-password"
+      placeholder="{{ 'Leave blank to keep the saved token' if has_token else 'Paste the token from @BotFather' }}">
+    {% if has_token %}<div class="saved-token">A token is already saved. Leave this blank to keep it.</div>{% endif %}
+
+    <label for="chat_id">Chat ID</label>
+    <input type="text" id="chat_id" name="chat_id" value="{{ chat_id }}"
+      placeholder="e.g. 123456789 (from @userinfobot)">
+
+    <div class="row">
+      <input type="checkbox" id="enabled" name="enabled" {{ 'checked' if enabled else '' }}>
+      <label for="enabled" style="margin:0">Enable Telegram alerts</label>
+    </div>
+    <div class="hint">Enabling needs both a saved token and a chat ID.</div>
+
+    <button type="submit">Save</button>
+  </div>
+</form>
+
+<div class="note">
+  Stored on the Pi in <code>telegram_settings.json</code> (never committed to the repository),
+  and applied on the next service restart. For security the token is never shown back here once saved.
+</div>
+</body>
+</html>
+'''
+
+
+def _tg_settings_path():
+    return os.path.join(BASE_DIR, 'telegram_settings.json')
+
+
+def _load_tg_settings():
+    """Read the saved Telegram form settings; {} if the file is missing/unreadable."""
+    try:
+        with open(_tg_settings_path()) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_tg_settings(data):
+    path = _tg_settings_path()
+    with open(path, 'w') as f:
+        json.dump(data, f)
+    try:
+        os.chmod(path, 0o600)   # credentials file — owner read/write only
+    except Exception:
+        pass
+
+
 # ── Routes ────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -536,6 +635,35 @@ def api_status():
 @require_auth
 def api_recordings():
     return jsonify(storage.list_recordings_with_thumbs() if storage else [])
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+@require_auth
+def settings_page():
+    if request.method == 'POST':
+        s = _load_tg_settings()
+        token = request.form.get('bot_token', '').strip()
+        chat  = request.form.get('chat_id', '').strip()
+        enabled = request.form.get('enabled') == 'on'
+        if token:                       # blank = keep the existing token
+            s['bot_token'] = token
+        s['chat_id'] = chat
+        # only store enabled=true if we actually have both credentials
+        s['enabled'] = bool(enabled and s.get('bot_token') and chat)
+        _save_tg_settings(s)
+        logger.info("Telegram settings updated via web form")
+        return redirect('/settings?saved=1')
+
+    s = _load_tg_settings()
+    resp = app.make_response(render_template_string(
+        SETTINGS_TEMPLATE,
+        enabled=bool(s.get('enabled')),
+        chat_id=s.get('chat_id', ''),
+        has_token=bool(s.get('bot_token')),
+        saved=request.args.get('saved') == '1',
+    ))
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 # ── Startup ───────────────────────────────────────────────────────────
