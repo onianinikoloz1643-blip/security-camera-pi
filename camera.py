@@ -201,29 +201,39 @@ class Camera:
         self._is_recording     = False
 
     def start(self):
-        """Probe for a working camera and start it.
-        Raises RuntimeError (handled by main.py) if none is available."""
+        """Probe for a working camera and start it. In 'auto' mode this tries
+        CSI (Picamera2) first, then a USB/V4L2 webcam, and uses the first one
+        that yields a frame. Raises RuntimeError (handled by main.py) if none do."""
         backend = (CAMERA_BACKEND or 'auto').lower()
+        if backend == 'csi':
+            order = ['csi']
+        elif backend == 'usb':
+            order = ['usb']
+        else:                      # 'auto'
+            order = ['csi', 'usb']
 
-        if backend in ('auto', 'csi'):
-            source = Picamera2Source(FRAME_WIDTH, FRAME_HEIGHT, FPS)
-            if source.open():
+        checked = []
+        for kind in order:
+            if kind == 'csi':
+                source = Picamera2Source(FRAME_WIDTH, FRAME_HEIGHT, FPS)
+                checked.append("CSI via Picamera2")
+            else:
+                source = OpenCVSource(FRAME_WIDTH, FRAME_HEIGHT, FPS, device=CAMERA_DEVICE)
+                checked.append("USB via OpenCV/V4L2")
+
+            try:
+                opened = source.open()
+            except RuntimeError as e:
+                # e.g. picamera2 not installed — note it and try the next backend
+                logger.warning(str(e))
+                opened = False
+
+            if opened:
                 self._use(source)
                 return
-            # 'auto' will also try USB once the next stage wires it into the
-            # probe chain; for now both 'auto' and 'csi' stop here without CSI.
-            raise RuntimeError(_no_camera_msg(["CSI via Picamera2"]))
+            logger.info(f"{source.name} did not yield a frame")
 
-        if backend == 'usb':
-            source = OpenCVSource(FRAME_WIDTH, FRAME_HEIGHT, FPS, device=CAMERA_DEVICE)
-            if source.open():
-                self._use(source)
-                return
-            raise RuntimeError(_no_camera_msg(["USB via OpenCV/V4L2"]))
-
-        raise RuntimeError(
-            f"CAMERA_BACKEND='{backend}' is invalid; use 'auto', 'csi' or 'usb'."
-        )
+        raise RuntimeError(_no_camera_msg(checked))
 
     def _use(self, source):
         self._source = source
