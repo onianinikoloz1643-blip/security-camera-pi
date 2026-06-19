@@ -38,3 +38,10 @@ test_camera.jpg
 
 # Submission documents — keep local, never push
 *.docx
+docs/report-ka*
+docs/build-report-pdf.cjs
+docs/defense-qa.md
+
+# AI assistant instructions — local only
+AGENTS.md
+CLAUDE.md
