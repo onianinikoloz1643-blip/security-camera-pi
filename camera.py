@@ -1,17 +1,102 @@
 import cv2
-import numpy as np
 import logging
-from config import FRAME_WIDTH, FRAME_HEIGHT, FPS, CAMERA_HFLIP, CAMERA_VFLIP
+from config import (
+    FRAME_WIDTH, FRAME_HEIGHT, FPS,
+    CAMERA_HFLIP, CAMERA_VFLIP, CAMERA_BACKEND,
+)
 
 logger = logging.getLogger(__name__)
 
 
+# ── Camera backends ───────────────────────────────────────────────────
+# Each backend exposes: open() -> bool, read() -> BGR ndarray | None, close().
+# A backend only counts as "working" once open() has captured a real frame.
+
+class Picamera2Source:
+    """CSI camera via Picamera2 / libcamera (Raspberry Pi camera modules)."""
+
+    name = "CSI (Picamera2)"
+
+    def __init__(self, width, height, fps):
+        self.width  = width
+        self.height = height
+        self.fps    = fps
+        self.device = "CSI port"
+        self._picam = None
+
+    def open(self):
+        try:
+            from picamera2 import Picamera2
+            from libcamera import Transform
+        except ImportError:
+            # A missing library is an environment problem worth surfacing, not a
+            # "no camera here" — re-raise so start() reports it instead of silently
+            # falling through.
+            raise RuntimeError(
+                "picamera2 is not installed. "
+                "Run: sudo apt install python3-picamera2"
+            )
+
+        try:
+            self._picam = Picamera2()
+            config = self._picam.create_video_configuration(
+                main={"format": "RGB888", "size": (self.width, self.height)},
+                controls={"FrameRate": self.fps},
+                transform=Transform(hflip=CAMERA_HFLIP, vflip=CAMERA_VFLIP),
+            )
+            self._picam.configure(config)
+            self._picam.start()
+        except Exception as e:
+            logger.warning(f"CSI camera did not initialize: {e}")
+            self.close()
+            return False
+
+        # A clean start() is not proof of a live feed — require a real frame.
+        frame = self.read()
+        if frame is None:
+            logger.warning("CSI camera started but returned no frame")
+            self.close()
+            return False
+
+        # adopt the true frame size so recordings match what we capture
+        self.height, self.width = frame.shape[:2]
+        return True
+
+    def read(self):
+        if not self._picam:
+            return None
+        try:
+            frame_rgb = self._picam.capture_array()
+            return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            logger.error(f"CSI frame capture error: {e}")
+            return None
+
+    def close(self):
+        if self._picam:
+            try:
+                self._picam.stop()
+            except Exception:
+                pass
+            try:
+                self._picam.close()
+            except Exception:
+                pass
+            self._picam = None
+
+
+# ── Public facade ─────────────────────────────────────────────────────
+
 class Camera:
+    """Selects a working camera backend at start(), then exposes a stable
+    interface (capture_frame -> BGR, recording helpers) to the rest of the
+    system, independent of which camera is actually connected."""
+
     def __init__(self):
-        self.width  = FRAME_WIDTH
-        self.height = FRAME_HEIGHT
-        self.fps    = FPS
-        self.picam  = None
+        self.width   = FRAME_WIDTH
+        self.height  = FRAME_HEIGHT
+        self.fps     = FPS
+        self._source = None
 
         self._recording_writer = None
         self._recording_path   = None
@@ -19,67 +104,53 @@ class Camera:
         self._is_recording     = False
 
     def start(self):
-        """Initialize and start the camera with graceful error handling."""
-        try:
-            from picamera2 import Picamera2
-            from libcamera import Transform
-        except ImportError:
+        """Probe for a working camera and start it.
+        Raises RuntimeError (handled by main.py) if none is available."""
+        backend = (CAMERA_BACKEND or 'auto').lower()
+
+        if backend in ('auto', 'csi'):
+            source = Picamera2Source(FRAME_WIDTH, FRAME_HEIGHT, FPS)
+            if source.open():
+                self._use(source)
+                return
             raise RuntimeError(
-                "picamera2 is not installed. "
-                "Run: sudo apt install python3-picamera2"
+                "No working camera found (checked: CSI via Picamera2). "
+                "Make sure a camera is connected and enabled in "
+                "/boot/firmware/config.txt (camera_auto_detect=1, or the "
+                "correct dtoverlay), then reboot."
             )
 
-        try:
-            self.picam = Picamera2()
-        except Exception as e:
-            raise RuntimeError(
-                f"Camera initialization failed. "
-                f"Make sure the camera is connected and "
-                f"config.txt is correctly configured.\n"
-                f"Detail: {e}"
-            )
+        # The USB ('usb') backend is added in a later stage.
+        raise RuntimeError(
+            f"CAMERA_BACKEND='{backend}' is not supported yet; use 'auto' or 'csi'."
+        )
 
-        try:
-            config = self.picam.create_video_configuration(
-                main={"format": "RGB888", "size": (self.width, self.height)},
-                controls={"FrameRate": self.fps},
-                transform=Transform(hflip=CAMERA_HFLIP, vflip=CAMERA_VFLIP)
-            )
-            self.picam.configure(config)
-            self.picam.start()
-            logger.info(
-                f"Camera started — {self.width}x{self.height} @ {self.fps}fps"
-            )
-        except Exception as e:
-            self.picam = None
-            raise RuntimeError(f"Camera configuration failed: {e}")
+    def _use(self, source):
+        self._source = source
+        # adopt the backend's actual frame size; keep the configured FPS as the
+        # recording/sampling rate (the capture loop paces itself at FPS)
+        self.width  = source.width
+        self.height = source.height
+        logger.info(
+            f"Camera: {source.name} on {source.device} — "
+            f"{self.width}x{self.height} @ {self.fps}fps"
+        )
 
     def stop(self):
         """Stop the camera safely."""
-        if self.picam:
-            try:
-                self.picam.stop()
-                logger.info("Camera stopped")
-            except Exception as e:
-                logger.warning(f"Camera stop error: {e}")
-            finally:
-                self.picam = None
+        if self._source:
+            self._source.close()
+            self._source = None
+            logger.info("Camera stopped")
 
     def capture_frame(self):
-        """
-        Capture a single frame and return as BGR numpy array.
-        numpy is imported at module level for efficiency —
-        no repeated import overhead on every frame.
-        """
-        if not self.picam:
-            raise RuntimeError(
-                "Camera not started — call start() first"
-            )
-        try:
-            frame_rgb = self.picam.capture_array()
-            return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        except Exception as e:
-            raise RuntimeError(f"Frame capture error: {e}")
+        """Capture a single frame and return it as a BGR numpy array."""
+        if not self._source:
+            raise RuntimeError("Camera not started — call start() first")
+        frame = self._source.read()
+        if frame is None:
+            raise RuntimeError("Frame capture returned no data")
+        return frame
 
     def draw_detections(self, frame, detections):
         """Draw bounding boxes and confidence labels on frame."""

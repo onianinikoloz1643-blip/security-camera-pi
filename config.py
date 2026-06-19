@@ -16,6 +16,12 @@ FPS          = 10
 CAMERA_HFLIP = True   # flip horizontally (camera is mounted upside down)
 CAMERA_VFLIP = True   # flip vertically
 
+# Camera backend selection. 'auto' detects a working camera (CSI first, then a
+# USB/V4L2 webcam); 'csi' or 'usb' force one. Override per-Pi with the
+# CAMERA_BACKEND / CAMERA_DEVICE env vars so you never have to edit this file.
+CAMERA_BACKEND = os.getenv('CAMERA_BACKEND', 'auto').lower()
+CAMERA_DEVICE  = os.getenv('CAMERA_DEVICE')   # None = auto; USB index e.g. '0'
+
 # ── Detection ─────────────────────────────────────────────────────────
 DETECTION_THRESHOLD = 0.4   # Min confidence for detection (0.0-1.0)
 CONSECUTIVE_FRAMES_REQUIRED = 2  # Require N consecutive frames per label
@@ -91,6 +97,10 @@ def validate_config():
         )
     if FPS <= 0:
         errors.append(f"FPS must be > 0, got {FPS}")
+    if CAMERA_BACKEND not in ('auto', 'csi', 'usb'):
+        errors.append(
+            f"CAMERA_BACKEND must be 'auto', 'csi' or 'usb', got '{CAMERA_BACKEND}'"
+        )
     if FRAME_WIDTH <= 0 or FRAME_HEIGHT <= 0:
         errors.append(
             f"FRAME_WIDTH and FRAME_HEIGHT must be > 0, "
