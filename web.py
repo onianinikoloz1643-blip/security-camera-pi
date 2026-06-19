@@ -55,11 +55,13 @@ HTML_TEMPLATE = '''
 
     #toast{position:fixed;top:20px;right:20px;background:#1e3a1e;border:1px solid #4caf50;
            border-radius:8px;padding:12px 18px;font-size:.85em;color:#a5d6a7;
-           display:none;z-index:999;max-width:300px}
+           display:none;z-index:999;max-width:min(300px,calc(100vw - 40px))}
     #toast.show{display:block;animation:fadein .3s}
     @keyframes fadein{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+    /* recordings hold a full video player + control bar — keep them wide enough */
+    #rec-container{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
     .card{background:#1a1a1a;border-radius:8px;overflow:hidden;transition:transform .2s}
     .card:hover{transform:scale(1.02)}
     .card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;cursor:pointer}
@@ -107,6 +109,9 @@ HTML_TEMPLATE = '''
       .statusbar{gap:10px}
       .stat{padding:8px 12px;font-size:.78em}
       .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+      /* one recording per row on phones so the control bar always fits */
+      #rec-container{grid-template-columns:1fr}
+      .vseek{min-width:20px}
     }
   </style>
 </head>
@@ -328,6 +333,19 @@ function skip(v, secs) {
   if (!v || !v.duration) return;
   v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + secs));
 }
+// Same button enters AND exits fullscreen. Desktop/Android/iPad fullscreen the
+// player box; iPhone can only fullscreen the <video> (it has its own exit).
+function toggleFullscreen(p, v) {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } else if (p.requestFullscreen) {
+    p.requestFullscreen();
+  } else if (p.webkitRequestFullscreen) {
+    p.webkitRequestFullscreen();
+  } else if (v.webkitEnterFullscreen) {
+    v.webkitEnterFullscreen();
+  }
+}
 
 // Space toggles play/pause on the active video (or the first one).
 // Ignored while typing in an input or dragging the seek bar.
@@ -355,7 +373,7 @@ function wirePlayers() {
       if (a === 'play') togglePlay(v);
       else if (a === 'back') skip(v, -10);
       else if (a === 'fwd')  skip(v, 10);
-      else if (a === 'full') { (p.requestFullscreen || p.webkitRequestFullscreen).call(p); }
+      else if (a === 'full') toggleFullscreen(p, v);
     }));
 
     // single click = play/pause; double click = skip ±10s.
@@ -402,7 +420,7 @@ function renderRecordings(list) {
     const time = t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
     const poster = rec.thumb ? ' poster="/snapshots/'+rec.thumb+'"' : '';
     const media = rec.file.endsWith('.mp4')
-      ? '<div class="player"><video playsinline preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
+      ? '<div class="player"><video playsinline webkit-playsinline preload="none"'+poster+' src="/recordings/'+rec.file+'"></video>'
         + '<div class="vbar">'
         +   '<button class="vbtn" data-act="play" title="Play/pause">'+SVG_PLAY+'</button>'
         +   '<button class="vbtn" data-act="back" title="Back 10s">'+SVG_BACK+'</button>'
