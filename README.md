@@ -122,12 +122,44 @@ wget -O models/detect.tflite \
 The label file `models/labelmap.txt` (COCO classes) is already in the repository.
 
 ### 5. Camera
-Add to `/boot/firmware/config.txt`:
-```
-camera_auto_detect=0
-dtoverlay=imx708
-```
-If the image comes out upside-down or mirrored, set `CAMERA_HFLIP` / `CAMERA_VFLIP` in `config.py`.
+
+The app auto-detects the camera at startup (`CAMERA_BACKEND=auto`, the default): it
+tries a **CSI camera** (Raspberry Pi modules, via Picamera2/libcamera) first, then a
+**USB/UVC webcam** (via OpenCV V4L2), and uses the first one that delivers a frame.
+The chosen backend is logged at startup, e.g.
+`Camera: CSI (Picamera2) on CSI port — 1280x720 @ 10fps`.
+
+**CSI cameras** are recognised at *boot* by the firmware, not by this app — that
+happens in `/boot/firmware/config.txt`, on the boot partition, **outside this
+repository**, so no `git pull` can change it. Two options:
+
+- *Recommended (any supported Pi camera, swappable):* keep the firmware default
+  `camera_auto_detect=1` and **do not** hardcode a sensor overlay. libcamera then
+  detects whichever officially-supported module is connected (Camera Module 1/2/3,
+  HQ, etc.). Reboot after editing.
+- *Explicit (one fixed sensor):*
+  ```
+  camera_auto_detect=0
+  dtoverlay=imx708        # this project's module; change for a different sensor
+  ```
+
+> **Limitation (by design — cannot be solved in code):** a third-party CSI sensor
+> that needs a specific `dtoverlay` (and sometimes a tuning file) must have that line
+> added here manually, followed by a reboot. The device-tree overlay is loaded at boot
+> *before* Python runs, so the app can never select an unconfigured CSI sensor after a
+> pull. USB cameras have no such requirement.
+
+**USB webcams** need no boot config — plug in a UVC/V4L2 device and `auto` finds it if
+no CSI camera is present. Non-UVC cameras, IP/RTSP streams, and multi-camera selection
+are out of scope.
+
+**Overrides** (environment variables, so you needn't edit tracked files):
+
+| Variable | Purpose |
+|---|---|
+| `CAMERA_BACKEND` | `auto` (default), or force `csi` / `usb` |
+| `CAMERA_DEVICE` | pin a USB index (e.g. `0`) instead of probing `0..5` |
+| `CAMERA_HFLIP` / `CAMERA_VFLIP` | `true`/`false`; default `true` (this module is mounted upside-down). Set both `false` for an upright USB webcam |
 
 ### 6. HTTPS certificate
 The web interface runs over HTTPS. Generate a self-signed certificate:
