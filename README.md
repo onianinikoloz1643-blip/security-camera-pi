@@ -11,11 +11,16 @@ Built as my bachelor's capstone project at Caucasus University.
 
 - Detects people and vehicles (car, motorcycle, bus, truck, bicycle) with a TensorFlow Lite model.
 - Runs a lightweight motion filter first, so the neural network only runs when something moves.
-- Treats each appearance as one event: it saves a single snapshot and records one clip for the
-  duration, instead of writing an image every few seconds.
-- Serves a web dashboard over HTTPS with live updates, a snapshot viewer (click to enlarge,
-  scroll to zoom, drag to pan), and the recordings list with thumbnails and timestamps.
-- Sends Telegram alerts with a photo and accepts commands back through an interactive bot.
+- Treats each appearance as one event: one snapshot plus a single clip that keeps recording until
+  the subject actually leaves the frame — it re-checks for a still-present person, not just motion.
+- Works with whatever camera is connected: it auto-detects a Raspberry Pi CSI camera, then a
+  USB/V4L2 webcam, with no code changes.
+- Serves a web dashboard over HTTPS with live updates: in-browser clip playback with custom
+  controls, a snapshot viewer (zoom and pan, including pinch and drag on touch), and the
+  recordings list with thumbnails and timestamps.
+- Sends Telegram alerts with a photo and accepts commands back through an interactive bot;
+  credentials can be entered from the dashboard or set as environment variables.
+- Optionally pings an external monitor so you are alerted if the Pi goes offline entirely.
 - Manages its own disk space and runs as a systemd service that restarts on failure.
 
 ## Hardware
@@ -36,7 +41,8 @@ matters.
 
 The main loop in `main.py` runs this pipeline per frame:
 
-1. **Capture** — `camera.py` grabs a 1280×720 frame from the IMX708 with Picamera2.
+1. **Capture** — `camera.py` grabs a 1280×720 frame. It auto-detects the camera at startup — a
+   Raspberry Pi CSI camera (Picamera2) first, then a USB/V4L2 webcam (OpenCV).
 2. **Motion filter** — `motion.py` compares the frame to the previous one. If nothing changed,
    the frame is dropped before any inference. This is the main reason the system stays cool.
 3. **Detection** — `detector.py` runs the frame through EfficientDet-Lite0 (INT8) with the LiteRT
@@ -44,8 +50,9 @@ The main loop in `main.py` runs this pipeline per frame:
    consecutive inferences before confirming it. The second check suppresses single-frame false
    positives.
 4. **Event handling** — on the first confirmed detection it saves one annotated snapshot, sends a
-   Telegram alert, and starts recording. Recording continues until there have been no detections
-   for a cooldown period.
+   Telegram alert, and starts recording. While recording it re-runs the detector about once a
+   second even without motion, so a person who stops moving but stays in frame keeps the clip
+   alive; recording stops only after the scene has been clear for a cooldown period.
 5. **Storage** — `storage.py` writes snapshots (JPEG) and clips (AVI, then converted to MP4 with
    ffmpeg in the background), and deletes the oldest files once the disk passes 90%.
 
@@ -68,8 +75,8 @@ load. Placement and lighting affect accuracy as much as the configuration does.
 | Python 3.13 | Runtime |
 | ai-edge-litert | TensorFlow Lite (LiteRT) inference on ARM64 |
 | EfficientDet-Lite0 INT8 | Detection model (COCO classes) |
-| OpenCV | Frame processing, annotation, video writing |
-| Picamera2 | Camera capture |
+| OpenCV | Frame processing, annotation, video writing, USB camera capture |
+| Picamera2 | CSI camera capture |
 | Flask | Web interface |
 | NumPy | Array processing |
 | requests | Telegram API calls |
@@ -177,13 +184,20 @@ On the first run the system creates `auth.txt` with a randomly generated admin p
 prints it to the console once — note it down. Open `https://raspberrypi.local:8080` and log in.
 
 ### 8. Telegram (optional)
-Create a bot with **@BotFather**, get your numeric chat ID (for example from **@userinfobot**),
-and pass them as environment variables so they are never stored in the repository:
-```bash
-export TELEGRAM_ENABLED=true
-export TELEGRAM_BOT_TOKEN='your-token'
-export TELEGRAM_CHAT_ID='your-chat-id'
-```
+Create a bot with **@BotFather** and get your numeric chat ID (for example from **@userinfobot**).
+Provide the credentials either way:
+
+- **From the dashboard:** open **Settings** in the web interface, enter the token and chat ID, and
+  save. They are written to `telegram_settings.json` on the Pi (gitignored, never committed) and
+  take effect after a restart. The token is never shown back on the page.
+- **Environment variables:**
+  ```bash
+  export TELEGRAM_ENABLED=true
+  export TELEGRAM_BOT_TOKEN='your-token'
+  export TELEGRAM_CHAT_ID='your-chat-id'
+  ```
+
+If both are present, the saved form values take precedence.
 
 ## Running as a service
 
@@ -222,8 +236,13 @@ sudo systemctl enable --now security-camera
 Served at `https://<pi>:8080` behind HTTP basic auth. It shows system status (snapshot and
 recording counts, disk usage), the most recent snapshots, and the recordings list with a
 thumbnail and timestamp for each clip. Updates arrive live over SSE, so new detections appear
-without a reload. Clicking a snapshot opens it full-screen, where you can scroll to zoom and drag
-to pan.
+without a reload.
+
+Recordings play in the browser with custom controls — play/pause (button, single click, or the
+spacebar), skip ±10 s (double-click the left/right half), a seek bar, and a fullscreen toggle.
+Clicking a snapshot opens it full-screen with zoom and pan (mouse wheel and drag on desktop, pinch
+and drag on touch). The layout stays usable down to phone widths. A **Settings** link opens a page
+for entering Telegram credentials.
 
 ## Telegram bot
 
@@ -243,6 +262,18 @@ When enabled, the bot sends an alert with a photo on detection and responds to:
 Alerts have a per-label and a global cooldown so a single event does not flood the chat. Commands
 are only accepted from the configured chat ID.
 
+## Offline alerts (optional)
+
+A running Pi can report itself, but a dead one cannot — so the system instead pings an external
+monitor on a schedule, and the monitor alerts you when the pings stop. Set `HEARTBEAT_URL` to a
+check URL (for example from [healthchecks.io](https://healthchecks.io)); the Pi pings it every five
+minutes, and a power loss, crash, or network drop shows up as missed pings. Left unset, the feature
+does nothing.
+```
+# add to the service with:  sudo systemctl edit security-camera
+Environment=HEARTBEAT_URL=https://hc-ping.com/your-uuid
+```
+
 ## Configuration
 
 Key settings in `config.py`:
@@ -253,12 +284,15 @@ Key settings in `config.py`:
 | `CONSECUTIVE_FRAMES_REQUIRED` | 2 | Inferences a label must appear in before confirming |
 | `MOTION_ENABLED` | True | Skip inference on static frames |
 | `RECORDING_COOLDOWN` | 10 | Seconds of no detection before recording stops |
+| `PRESENCE_CHECK_INTERVAL` | 1.0 | While recording, re-check for a still-present subject this often |
 | `MAX_RECORDING_SECONDS` | 300 | Split recordings into five-minute files |
 | `STORAGE_MAX_PERCENT` | 90 | Disk usage that triggers cleanup of old files |
 | `FPS` | 10 | Capture rate |
 
 `config.py` validates these on startup and refuses to run with invalid values or missing files
-(the model or the certificate).
+(the model or the certificate). Camera selection (`CAMERA_BACKEND`, `CAMERA_DEVICE`, the flips),
+Telegram credentials, and `HEARTBEAT_URL` can additionally be set through environment variables —
+see the sections above.
 
 ## Project layout
 
@@ -266,13 +300,14 @@ Key settings in `config.py`:
 main.py              Orchestrator: detection loop, web thread, clean shutdown
 config.py            Settings and startup validation
 detector.py          EfficientDet-Lite0 inference and confirmation filter
-camera.py            Picamera2 capture, annotation, recording
+camera.py            Camera capture (CSI/USB auto-detect), annotation, recording
 motion.py            Pixel-difference motion filter
 storage.py           Snapshots, recordings, disk cleanup, logging
 auth.py              Web basic auth (SHA-256, password rules)
 web.py               Flask HTTPS dashboard with SSE
 telegram_notify.py   Outgoing detection alerts
 telegram_bot.py      Interactive command bot
+heartbeat.py         Optional offline-heartbeat ping
 mock_camera.py       Camera stand-in for testing without hardware
 test_system.py       Run the full pipeline with the mock camera
 benchmark.py         Inference, motion, and system benchmarks
@@ -292,7 +327,8 @@ camera, and service are all in place.
 The service restarts automatically on failure (`Restart=always`). Logs are written to `logs/` with
 rotation (5 MB × 3 files) so they cannot fill the disk, and old snapshots and recordings are
 deleted once the disk passes 90%. Shutdown is handled cleanly: the camera is released and any
-in-progress recording is finalized.
+in-progress recording is finalized. An optional heartbeat (see *Offline alerts*) covers the one
+failure the Pi cannot report itself — going completely offline.
 
 ## License
 
